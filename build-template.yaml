@@ -1,0 +1,50 @@
+---
+apiVersion: template.openshift.io/v1
+kind: Template
+metadata:
+  annotations:
+    description: user-namespace-operator deploy
+  name: user-namespace-operator-build
+
+parameters:
+- name: GIT_REPO
+  value: https://github.com/redhat-gpte-devopsautomation/user-namespace-operator.git
+- name: SERVICE_NAME
+  value: user-namespace-operator
+- name: NAMESPACE
+  value: user-namespace-operator
+
+objects:
+- apiVersion: image.openshift.io/v1
+  kind: ImageStream
+  metadata:
+    name: ${SERVICE_NAME}
+    namespace: ${NAMESPACE}
+  spec:
+    lookupPolicy:
+      local: false
+
+- apiVersion: v1
+  kind: BuildConfig
+  metadata:
+    name: ${SERVICE_NAME}
+    namespace: ${NAMESPACE}
+  spec:
+    output:
+      to:
+        kind: ImageStreamTag
+        name: ${SERVICE_NAME}:latest
+    postCommit: {}
+    resources: {}
+    runPolicy: Serial
+    source:
+      git:
+        uri: ${GIT_REPO}
+        ref: master
+    strategy:
+      type: Docker
+      dockerStrategy:
+        from:
+          kind: DockerImage
+          name: registry.access.redhat.com/ubi8:latest
+    triggers: []

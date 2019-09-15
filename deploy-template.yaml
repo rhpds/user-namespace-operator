@@ -1,0 +1,237 @@
+---
+apiVersion: template.openshift.io/v1
+kind: Template
+metadata:
+  annotations:
+    description: user-namespace-operator deploy
+  name: user-namespace-operator deploy
+
+parameters:
+- name: NAMESPACE
+  value: user-namespace-operator
+- name: IMAGE
+  value: quay.io/gpte-devops-automation/user-namespace-operator:0.1.0
+  #value: docker-registry.default.svc:5000/user-namespace-operator/user-namespace-operator:latest
+  #value: image-registry.openshift-image-registry.svc:5000/user-namespace-operator/user-namespace-operator:latest
+- name: IMAGE_PULL_POLICY
+  value: IfNotPresent
+  #value: Always
+- name: SERVICE_NAME
+  value: user-namespace-operator
+- name: OPERATOR_DOMAIN
+  value: usernamespace.gpte.redhat.com
+
+objects:
+- apiVersion: v1
+  kind: Namespace
+  metadata:
+    name: ${NAMESPACE}
+
+- apiVersion: usernamespace.gpte.redhat.com/v1
+  kind: UserNamespaceConfig
+  metadata:
+    name: default
+  spec:
+    templates:
+    - name: default
+
+- apiVersion: template.openshift.io/v1
+  kind: Template
+  metadata:
+    name: default
+  
+  parameters:
+  - name: PROJECT_NAME
+  - name: PROJECT_ADMIN_USER
+  
+  objects:
+  - apiVersion: rbac.authorization.k8s.io/v1
+    kind: RoleBinding
+    metadata:
+      annotations:
+        openshift.io/description: >-
+          Allows all pods in this namespace to pull images from this namespace.
+          It is auto-managed by a controller; remove subjects to disable.
+      name: system:image-pullers
+      namespace: ${PROJECT_NAME}
+    roleRef:
+      apiGroup: rbac.authorization.k8s.io
+      kind: ClusterRole
+      name: system:image-puller
+    subjects:
+    - apiGroup: rbac.authorization.k8s.io
+      kind: Group
+      name: system:serviceaccounts:${PROJECT_NAME}
+  
+  - apiVersion: rbac.authorization.k8s.io/v1
+    kind: RoleBinding
+    metadata:
+      annotations:
+        openshift.io/description: >-
+          Allows builds in this namespace to push images to this namespace.
+          It is auto-managed by a controller; remove subjects to disable.
+      name: system:image-builders
+      namespace: ${PROJECT_NAME}
+    roleRef:
+      apiGroup: rbac.authorization.k8s.io
+      kind: ClusterRole
+      name: system:image-builder
+    subjects:
+    - kind: ServiceAccount
+      name: builder
+      namespace: ${PROJECT_NAME}
+  
+  - apiVersion: rbac.authorization.k8s.io/v1
+    kind: RoleBinding
+    metadata:
+      annotations:
+        openshift.io/description: >-
+          Allows deploymentconfigs in this namespace to rollout pods in this
+          namespace.  It is auto-managed by a controller; remove subjects to
+          disable.
+      name: system:deployers
+      namespace: ${PROJECT_NAME}
+    roleRef:
+      apiGroup: rbac.authorization.k8s.io
+      kind: ClusterRole
+      name: system:deployer
+    subjects:
+    - kind: ServiceAccount
+      name: deployer
+      namespace: ${PROJECT_NAME}
+  
+  - apiVersion: rbac.authorization.k8s.io/v1
+    kind: RoleBinding
+    metadata:
+      creationTimestamp: null
+      name: admin
+      namespace: ${PROJECT_NAME}
+    roleRef:
+      apiGroup: rbac.authorization.k8s.io
+      kind: ClusterRole
+      name: admin
+    subjects:
+    - apiGroup: rbac.authorization.k8s.io
+      kind: User
+      name: ${PROJECT_ADMIN_USER}
+
+- apiVersion: v1
+  kind: ServiceAccount
+  metadata:
+    name: ${SERVICE_NAME}
+    namespace: ${NAMESPACE}
+
+- apiVersion: rbac.authorization.k8s.io/v1
+  kind: ClusterRole
+  metadata:
+    name: ${SERVICE_NAME}
+  rules:
+  - apiGroups:
+    - ${OPERATOR_DOMAIN}
+    resources:
+    - usernamespaces
+    verbs:
+    - create
+    - delete
+    - get
+    - list
+    - patch
+    - update
+    - watch
+  - apiGroups:
+    - user.openshift.io
+    resources:
+    - users
+    verbs:
+    - get
+    - list
+    - watch
+  - apiGroups:
+    - ''
+    resources:
+    - namespaces
+    verbs:
+    - create
+    - delete
+    - get
+    - list
+    - patch
+    - update
+    - watch
+
+- apiVersion: rbac.authorization.k8s.io/v1
+  kind: ClusterRole
+  metadata:
+    name: ${SERVICE_NAME}-self-provision
+  rules:
+  - apiGroups:
+    - ${OPERATOR_DOMAIN}
+    resources:
+    - usernamespaces
+    verbs:
+    - create
+    - delete
+    - get
+    - list
+
+- apiVersion: rbac.authorization.k8s.io/v1
+  kind: ClusterRoleBinding
+  metadata:
+    name: ${SERVICE_NAME}
+  roleRef:
+    apiGroup: rbac.authorization.k8s.io
+    kind: ClusterRole
+    name: ${SERVICE_NAME}
+  subjects:
+  - kind: ServiceAccount
+    name: ${SERVICE_NAME}
+    namespace: ${NAMESPACE}
+
+- apiVersion: rbac.authorization.k8s.io/v1
+  kind: ClusterRoleBinding
+  metadata:
+    name: ${SERVICE_NAME}-self-provision
+  roleRef:
+    apiGroup: rbac.authorization.k8s.io
+    kind: ClusterRole
+    name: ${SERVICE_NAME}-self-provision
+  subjects:
+  - kind: Group
+    name: system:authenticated:oauth
+
+- apiVersion: extensions/v1beta1
+  kind: Deployment
+  metadata:
+    labels:
+      name: ${SERVICE_NAME}
+    name: ${SERVICE_NAME}
+    namespace: ${NAMESPACE}
+  spec:
+    replicas: 1
+    selector:
+      matchLabels:
+        name: ${SERVICE_NAME}
+    strategy:
+      type: Recreate
+    template:
+      metadata:
+        labels:
+          name: ${SERVICE_NAME}
+      spec:
+        containers:
+        - name: operator
+          env:
+          - name: OPERATOR_DOMAIN
+            value: ${OPERATOR_DOMAIN}
+          image: ${IMAGE}
+          imagePullPolicy: ${IMAGE_PULL_POLICY}
+          # FIXME - Add probes
+          #livenessProbe:
+          #readinessProbe:
+          resources: {}
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+        restartPolicy: Always
+        securityContext: {}
+        serviceAccountName: ${SERVICE_NAME}
+        terminationGracePeriodSeconds: 30

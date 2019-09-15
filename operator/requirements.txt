@@ -1,0 +1,12 @@
+ansible
+inflection
+jmespath
+jsonpatch
+kopf
+kubernetes
+ndg-httpsclient
+openapi-core
+prometheus_client
+pyasn1
+pyOpenSSL
+werkzeug

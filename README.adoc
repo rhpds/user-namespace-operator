@@ -1,0 +1,10 @@
+# User Namespace Operator
+
+## Installation
+
+Deploy with:
+
+--------------------------------------------------------------------------------
+oc apply -f custom-resource-definitions/
+oc process -f deploy-template.yaml --local | oc apply -f -
+--------------------------------------------------------------------------------
