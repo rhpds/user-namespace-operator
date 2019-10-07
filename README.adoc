@@ -8,3 +8,28 @@ Deploy with:
 oc apply -f custom-resource-definitions/
 oc process -f deploy-template.yaml --local | oc apply -f -
 --------------------------------------------------------------------------------
+
+## Configuration
+
+The User Namespace Operator is configured with the `UserNamespaceConfig` custom
+resource kind. At present only one `UserNamespaceConfig` is supported and must
+be named "default".
+
+The initial provided configuration is:
+
+--------------------------------------------------------------------------------
+apiVersion: usernamespace.gpte.redhat.com/v1
+kind: UserNamespaceConfig
+metadata:
+  name: default
+spec:
+  templates:
+  - name: default
+--------------------------------------------------------------------------------
+
+This causes the OpenShift template named "default" in the namespace
+"user-namespace-operator" to initialize resources in managed namespaces.
+
+Additional templates can be created in the namespace "user-namespace-operator"
+and then referenced in the default `UserNamespaceConfig` and those will also be
+used or the provided default template can be modified to suit your needs.
