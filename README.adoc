@@ -1,5 +1,15 @@
 # User Namespace Operator
 
+The user-namespace-operator creates project namespaces in an OpenShift on
+initial user login as well as allow users to request additional project
+namespaces on demand.
+
+Namespaces are created by the user-namespace-operator by creating OpenShift
+project requests and then changing the `openshift.io/requester` annotation and
+adding an admin role binding for the user.
+This makes the behavior of the user-namespace-operator complimentary to
+configuration of the default project request template.
+
 ## Installation
 
 Deploy with:
