@@ -1,9 +1,9 @@
+import collections
 import copy
 import kopf
 import kubernetes
 import os
 import re
-
 
 autocreate_user_namespaces = True \
    if re.match(r'^[ty]', os.environ.get('AUTOCREATE_USER_NAMESPACES', 't'), re.IGNORECASE) \
@@ -87,28 +87,38 @@ def check_autocreate_user_namespace(user, logger):
 
 def check_namespace(namespace, user_namespace, logger):
     namespace_name = namespace.metadata.name
-    owner_reference = copy.copy(user_namespace['spec']['user'])
+    user_ref = user_namespace['spec']['user']
+    user_name = user_ref['name']
+    user_uid = user_ref['uid']
+    updated = False
+
+    if not namespace.metadata.annotations:
+        logger.info('setting namespace requester annotation')
+        namespace.metadata.annotations = {'openshift.io/requester', user_name}
+        updated = True
+    elif user_name != namespace.metadata.annotations.get('openshift.io/requester', ''):
+        logger.info('setting namespace requester annotation')
+        namespace.metadata.annotations['openshift.io/requester'] = user_name
+        updated = True
+
+    if not namespace.metadata.labels:
+        logger.info('setting namespace user-uid label')
+        namespace.metadata.labels =  {operator_domain + '/user-uid': user_ref['uid']}
+        updated = True
+    elif user_uid != namespace.metadata.labels.get(operator_domain + '/user-uid', ''):
+        logger.info('setting namespace user-uid label')
+        namespace.metadata.labels[operator_domain + '/user-uid'] = user_ref['uid']
+        updated = True
+
+    owner_reference = copy.copy(user_ref)
     owner_reference['controller'] = True
-    user_name = owner_reference['name']
-    patch = {}
-
-    if not namespace.metadata.annotations \
-    or user_name != namespace.metadata.annotations.get('openshift.io/requester', ''):
-        logger.info('setting namespace "openshift.io/requester" annotation')
-        patch['metadata']['annotations'] = { 'openshift.io/requester', user_name }
-
-    user_label = operator_domain + '/user'
-    if not namespace.metadata.labels \
-    or user_label in namespace.metadata.labels:
-        logger.info('setting namespace label "%s" to %s', user_label, user_name)
-        patch['metadata']['labels'] = { user_label: user_name }
-
     if not namespace.metadata.owner_references:
         logger.info('setting namespace owner metadata')
-        patch['metadata']['ownerReferences'] = [owner_reference]
+        namespace.metadata.owner_references = [owner_reference]
+        updated = True
 
-    if patch:
-        core_v1_api.patch_namespace(namespace_name, patch)
+    if updated:
+        core_v1_api.replace_namespace(namespace_name, namespace)
 
 def create_namespace(user_namespace, logger):
     user_namespace_meta = user_namespace['metadata']

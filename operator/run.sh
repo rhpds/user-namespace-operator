@@ -11,4 +11,6 @@ export LD_PRELOAD=libnss_wrapper.so
 export NSS_WRAPPER_PASSWD
 export NSS_WRAPPER_GROUP
 
-exec kopf run --standalone /operator/user-namespace-operator.py
+NAMESPACE="$(cat /run/secrets/kubernetes.io/serviceaccount/namespace)"
+
+exec kopf run --standalone --namespace "${NAMESPACE}" /operator/user-namespace-operator.py
