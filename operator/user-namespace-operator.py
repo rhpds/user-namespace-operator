@@ -117,28 +117,33 @@ def create_namespace(user_namespace, logger):
     user_name = user_ref['name']
     logger.info('creating namespace')
 
-    namespace = core_v1_api.create_namespace(
-        kubernetes.client.V1Namespace(
-            metadata = kubernetes.client.V1ObjectMeta(
-                name = user_namespace_name,
-                annotations = {
-                    'openshift.io/requester': user_name
-                },
-                labels = {
-                    operator_domain + '/user-uid': user_name
-                },
-                owner_references = [
-                    kubernetes.client.V1OwnerReference(
-                        api_version = 'v1',
-                        controller = True,
-                        kind = 'UserNamespace',
-                        name = user_namespace_name,
-                        uid = user_namespace_meta['uid']
-                    )
-                ]
-            )
-        )
+    project_request = custom_objects_api.create_cluster_custom_object(
+        'project.openshift.io', 'v1', 'projectrequests',
+        {
+            'apiVersion': 'project.openshift.io/v1',
+            'kind': 'ProjectRequest',
+            'metadata': {
+                'name': user_namespace_name
+            },
+            'description': 'User Namespace for ' + user_name,
+            'displayName': user_namespace_name
+        }
     )
+
+    namespace = core_v1_api.read_namespace(user_namespace_name)
+    namespace.metadata.annotations['openshift.io/requester'] = user_name
+    namespace.metadata.labels = { operator_domain + '/user-uid': user_ref['uid'] }
+    namespace.metadata.owner_references = [
+        kubernetes.client.V1OwnerReference(
+            api_version = 'v1',
+            controller = True,
+            kind = 'UserNamespace',
+            name = user_namespace_name,
+            uid = user_namespace_meta['uid']
+        )
+    ]
+    core_v1_api.replace_namespace(user_namespace_name, namespace)
+
     # FIXME - For now the namespace config is hard-coded to default
     init_namespace(user_namespace, 'default', logger)
 
@@ -150,6 +155,9 @@ def init_namespace(user_namespace, user_namespace_config_name, logger):
     except kubernetes.client.rest.ApiException as e:
         if e.status == 404:
             logger.warning("Unable to access UserNamespaceConfig %s", user_namespace_config_name)
+            return
+        else:
+            raise
 
     for template in user_namespace_config['spec']['templates']:
         apply_template_for_user_namespace(
@@ -172,6 +180,8 @@ def apply_template_for_user_namespace(user_namespace, user_namespace_config, tem
         if e.status == 404:
             logger.warning("Unable to access template %s in %s to initialize namespace", template_name, template_namespace)
             return
+        else:
+            raise
 
     # FIXME - Is there a python library for processing templates?
     for template_object in template.get('objects', []):
