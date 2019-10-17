@@ -140,22 +140,35 @@ def create_namespace(user_namespace, logger):
         }
     )
 
-    namespace = core_v1_api.read_namespace(user_namespace_name)
-    namespace.metadata.annotations['openshift.io/requester'] = user_name
-    namespace.metadata.labels = { operator_domain + '/user-uid': user_ref['uid'] }
-    namespace.metadata.owner_references = [
-        kubernetes.client.V1OwnerReference(
-            api_version = 'v1',
-            controller = True,
-            kind = 'UserNamespace',
-            name = user_namespace_name,
-            uid = user_namespace_meta['uid']
-        )
-    ]
-    core_v1_api.replace_namespace(user_namespace_name, namespace)
+    namespace_updated = False
+    for i in range(5):
+        try:
+            namespace = core_v1_api.read_namespace(user_namespace_name)
+            namespace.metadata.annotations['openshift.io/requester'] = user_name
+            namespace.metadata.labels = { operator_domain + '/user-uid': user_ref['uid'] }
+            namespace.metadata.owner_references = [
+                kubernetes.client.V1OwnerReference(
+                    api_version = 'v1',
+                    controller = True,
+                    kind = 'UserNamespace',
+                    name = user_namespace_name,
+                    uid = user_namespace_meta['uid']
+                )
+            ]
+            core_v1_api.replace_namespace(user_namespace_name, namespace)
+            namespace_updated = True
+            break
+        except kubernetes.client.rest.ApiException as e:
+            if e.status == 409:
+                logger.warning("Conflict  %s", user_namespace_name)
+            else:
+                raise
 
-    # FIXME - For now the namespace config is hard-coded to default
-    init_namespace(user_namespace, 'default', logger)
+    if namespace_updated:
+        # FIXME - For now the namespace config is hard-coded to default
+        init_namespace(user_namespace, 'default', logger)
+    else:
+        logger.error("Failed to update namespace")
 
 def init_namespace(user_namespace, user_namespace_config_name, logger):
     try:
@@ -170,6 +183,7 @@ def init_namespace(user_namespace, user_namespace_config_name, logger):
             raise
 
     for template in user_namespace_config['spec']['templates']:
+        logger.info("Applying template %s", template)
         apply_template_for_user_namespace(
             user_namespace, user_namespace_config_name,
             template['name'], template.get('namespace', operator_namespace),
