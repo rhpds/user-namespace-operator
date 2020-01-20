@@ -39,6 +39,7 @@ objects:
   kind: Template
   metadata:
     name: default
+    namespace: ${NAMESPACE}
   
   parameters:
   - name: PROJECT_NAME
