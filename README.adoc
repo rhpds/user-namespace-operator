@@ -43,3 +43,14 @@ This causes the OpenShift template named "default" in the namespace
 Additional templates can be created in the namespace "user-namespace-operator"
 and then referenced in the default `UserNamespaceConfig` and those will also be
 used or the provided default template can be modified to suit your needs.
+
+## Build
+
+--------------------------------------------------------------------------------
+oc process -f build-template.yaml --local | oc apply -f -
+oc start-build user-namespace-operator --from-dir=. -F
+IMAGE=$(oc get imagestream user-namespace-operator -o jsonpath='{.status.tags[?(@.tag=="latest")].items[0].dockerImageReference}')
+oc process -f deploy-template.yaml --local \
+-p IMAGE=$IMAGE \
+| oc apply -f -
+--------------------------------------------------------------------------------
