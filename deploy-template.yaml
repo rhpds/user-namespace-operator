@@ -10,7 +10,7 @@ parameters:
 - name: NAMESPACE
   value: user-namespace-operator
 - name: IMAGE
-  value: quay.io/gpte-devops-automation/user-namespace-operator:v0.2.1
+  value: quay.io/gpte-devops-automation/user-namespace-operator:v0.2.2
 - name: IMAGE_PULL_POLICY
   value: IfNotPresent
   #value: Always
