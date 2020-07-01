@@ -54,3 +54,11 @@ oc process -f deploy-template.yaml --local \
 -p IMAGE=$IMAGE \
 | oc apply -f -
 --------------------------------------------------------------------------------
+
+Deploy from build
+
+--------------------------------------------------------------------------------
+oc process -f deploy-template.yaml \
+-p IMAGE=$(oc get imagestream user-namespace-operator -o jsonpath='{.status.tags[?(@.tag=="latest")].items[0].dockerImageReference}') \
+| oc apply -f -
+--------------------------------------------------------------------------------

@@ -23,23 +23,12 @@ except FileNotFoundError:
     operator_namespace = os.environ.get('OPERATOR_NAMESPACE', 'user-namespace-operator')
 
 if os.path.exists('/run/secrets/kubernetes.io/serviceaccount/token'):
-    f = open('/run/secrets/kubernetes.io/serviceaccount/token')
-    kube_auth_token = f.read()
-    kube_config = kubernetes.client.Configuration()
-    kube_config.api_key['authorization'] = 'Bearer ' + kube_auth_token
-    kube_config.host = os.environ['KUBERNETES_PORT'].replace('tcp://', 'https://', 1)
-    kube_config.ssl_ca_cert = '/run/secrets/kubernetes.io/serviceaccount/ca.crt'
+    kubernetes.config.load_incluster_config()
 else:
     kubernetes.config.load_kube_config()
-    kube_config = None
 
-core_v1_api = kubernetes.client.CoreV1Api(
-    kubernetes.client.ApiClient(kube_config)
-)
-
-custom_objects_api = kubernetes.client.CustomObjectsApi(
-    kubernetes.client.ApiClient(kube_config)
-)
+core_v1_api = kubernetes.client.CoreV1Api()
+custom_objects_api = kubernetes.client.CustomObjectsApi()
 
 def sanitize_user_name(user_name):
     return re.sub(r'[^a-z0-9]', '-', user_name.lower())

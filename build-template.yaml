@@ -7,19 +7,18 @@ metadata:
   name: user-namespace-operator-build
 
 parameters:
+- name: KOPF_S2I_IMAGE
+  value: quay.io/redhat-cop/python-kopf-s2i:v0.28
 - name: GIT_REPO
   value: https://github.com/redhat-gpte-devopsautomation/user-namespace-operator.git
-- name: SERVICE_NAME
-  value: user-namespace-operator
-- name: NAMESPACE
+- name: NAME
   value: user-namespace-operator
 
 objects:
 - apiVersion: image.openshift.io/v1
   kind: ImageStream
   metadata:
-    name: ${SERVICE_NAME}
-    namespace: ${NAMESPACE}
+    name: ${NAME}
   spec:
     lookupPolicy:
       local: false
@@ -27,13 +26,12 @@ objects:
 - apiVersion: v1
   kind: BuildConfig
   metadata:
-    name: ${SERVICE_NAME}
-    namespace: ${NAMESPACE}
+    name: ${NAME}
   spec:
     output:
       to:
         kind: ImageStreamTag
-        name: ${SERVICE_NAME}:latest
+        name: ${NAME}:latest
     postCommit: {}
     resources: {}
     runPolicy: Serial
@@ -42,9 +40,9 @@ objects:
         uri: ${GIT_REPO}
         ref: master
     strategy:
-      type: Docker
-      dockerStrategy:
+      type: Source
+      sourceStrategy:
         from:
           kind: DockerImage
-          name: registry.access.redhat.com/ubi8:latest
+          name: ${KOPF_S2I_IMAGE}
     triggers: []
