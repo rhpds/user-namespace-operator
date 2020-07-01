@@ -1,4 +1,4 @@
-FROM registry.access.redhat.com/ubi8:latest
+FROM quay.io/redhat-cop/python-kopf-s2i:v0.28
 
 USER 0
 
