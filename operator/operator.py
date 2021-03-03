@@ -5,6 +5,11 @@ import kubernetes
 import os
 import re
 
+@kopf.on.startup()
+def configure(settings: kopf.OperatorSettings, **_):
+    # Disable scanning for CustomResourceDefinitions updates
+    settings.scanning.disabled = True
+
 autocreate_user_namespaces = True \
    if re.match(r'^[ty]', os.environ.get('AUTOCREATE_USER_NAMESPACES', 't'), re.IGNORECASE) \
    else False

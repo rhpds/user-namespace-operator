@@ -1,0 +1,36 @@
+{{- if .Values.defaultUserNamespaceConfig.create -}}
+---
+apiVersion: usernamespace.gpte.redhat.com/v1
+kind: UserNamespaceConfig
+metadata:
+  name: default
+spec:
+  templates:
+  - name: default
+---
+apiVersion: template.openshift.io/v1
+kind: Template
+metadata:
+  name: default
+  namespace: {{ include "userNamespaceOperator.namespaceName" . }}
+
+parameters:
+- name: PROJECT_NAME
+- name: PROJECT_ADMIN_USER
+
+objects:
+- apiVersion: rbac.authorization.k8s.io/v1
+  kind: RoleBinding
+  metadata:
+    creationTimestamp: null
+    name: admin:${PROJECT_ADMIN_USER}
+    namespace: ${PROJECT_NAME}
+  roleRef:
+    apiGroup: rbac.authorization.k8s.io
+    kind: ClusterRole
+    name: admin
+  subjects:
+  - apiGroup: rbac.authorization.k8s.io
+    kind: User
+    name: ${PROJECT_ADMIN_USER}
+{{- end -}}

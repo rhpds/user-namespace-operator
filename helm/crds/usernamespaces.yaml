@@ -1,0 +1,69 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: usernamespaces.usernamespace.gpte.redhat.com
+spec:
+  group: usernamespace.gpte.redhat.com
+  scope: Cluster
+  names:
+    plural: usernamespaces
+    singular: usernamespace
+    kind: UserNamespace
+    shortNames: []
+  versions:
+  - name: v1
+    served: true
+    storage: true
+    subresources:
+      status: {}
+    schema:
+      openAPIV3Schema:
+        description: >-
+          User namespace request.
+        type: object
+        required:
+        - apiVersion
+        - kind
+        - metadata
+        - spec
+        properties:
+          apiVersion:
+            type: string
+          kind:
+            type: string
+          metadata:
+            type: object
+            properties:
+              name:
+                type: string
+                maxLength: 63
+                pattern: ^[a-z0-9A-Z]([a-z0-9A-Z\-]*[a-z0-9A-Z])?$
+          spec:
+            description: >-
+              Definition of the UserNamespace request.
+            type: object
+            required:
+            - user
+            properties:
+              user:
+                description: >-
+                  Reference to user for whom a namespace is requested.
+                type: object
+                required:
+                - apiVersion
+                - kind
+                - name
+                - uid
+                properties:
+                  apiVersion:
+                    type: string
+                    enum:
+                    - user.openshift.io/v1
+                  kind:
+                    type: string
+                    enum:
+                    - User
+                  name:
+                    type: string
+                  uid:
+                    type: string

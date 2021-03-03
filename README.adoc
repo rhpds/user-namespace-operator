@@ -49,9 +49,10 @@ used or the provided default template can be modified to suit your needs.
 --------------------------------------------------------------------------------
 oc process -f build-template.yaml --local | oc apply -f -
 oc start-build user-namespace-operator --from-dir=. -F
-IMAGE=$(oc get imagestream user-namespace-operator -o jsonpath='{.status.tags[?(@.tag=="latest")].items[0].dockerImageReference}')
-oc process -f deploy-template.yaml --local \
--p IMAGE=$IMAGE \
+oc apply -f helm/crds/
+helm template helm/ \
+--set=image.tagOverride=- \
+--set=image.repository=$(oc get imagestream user-namespace-operator -o jsonpath='{.status.tags[?(@.tag=="latest")].items[0].dockerImageReference}') \
 | oc apply -f -
 --------------------------------------------------------------------------------
 
