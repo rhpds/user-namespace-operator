@@ -17,6 +17,7 @@ selfProvision:
   groups:
   - system:authenticated:oauth
 
+deploy: true
 replicaCount: 1
 
 image:
