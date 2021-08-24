@@ -11,6 +11,8 @@ namespace:
 
 defaultUserNamespaceConfig:
   create: true
+  userRoles:
+  - admin
 
 selfProvision:
   create: true
