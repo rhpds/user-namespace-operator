@@ -23,6 +23,7 @@ oc apply -f helm/crds/
 +
 --------------------------------------------------
 helm template helm/ \
+--include-crds \
 --set deploy=false \
 --set namespace.name=user-namespace-operator-dev \
 | oc apply -f -
@@ -107,6 +108,7 @@ oc start-build user-namespace-operator --from-dir=. --follow
 +
 --------------------------------------------------------------------------------
 helm template helm \
+--include-crds \
 --set namespace.create=false \
 --set namespace.name=user-namespace-operator-dev \
 --set=image.tagOverride=- \
