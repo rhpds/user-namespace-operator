@@ -2,13 +2,31 @@ import collections
 import copy
 import kopf
 import kubernetes
+import math
 import os
 import re
+import time
+
+class InfiniteRelativeBackoff:
+    def __init__(self, n=2, maximum=60):
+        self.n = n
+        self.maximum = maximum
+
+    def __iter__(self):
+        prev_t = []
+        max_age = self.maximum * math.ceil(math.log(self.maximum) / math.log(self.n))
+        while True:
+            t = time.monotonic()
+            prev_t = [p for p in prev_t if t - p < max_age]
+            delay = self.n ** len(prev_t)
+            prev_t.append(t)
+            yield delay if delay < self.maximum else self.maximum
 
 @kopf.on.startup()
 def configure(settings: kopf.OperatorSettings, **_):
     # Disable scanning for CustomResourceDefinitions updates
     settings.scanning.disabled = True
+    settings.networking.error_backoffs = InfiniteRelativeBackoff()
 
 autocreate_user_namespaces = True \
    if re.match(r'^[ty]', os.environ.get('AUTOCREATE_USER_NAMESPACES', 't'), re.IGNORECASE) \
