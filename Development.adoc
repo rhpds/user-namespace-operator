@@ -13,12 +13,6 @@ Use of `odo` is recommended for fast iterative development.
 . Install the `odo` developer CLI as described in the OpenShift documentation:
 https://docs.openshift.com/container-platform/latest/cli_reference/developer_cli_odo/installing-odo.html[Installing odo]
 
-. Create custom resource definitions:
-+
-----------------------
-oc apply -f helm/crds/
-----------------------
-
 . Create resources required for development from helm chart:
 +
 --------------------------------------------------
@@ -70,6 +64,7 @@ Delete resources created from helm template:
 +
 --------------------------------------------------
 helm template helm/ \
+--include-crds \
 --set deploy=false \
 --set namespace.name=user-namespace-operator-dev \
 | oc delete -f -

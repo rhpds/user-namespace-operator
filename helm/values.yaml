@@ -11,6 +11,9 @@ namespace:
 
 defaultUserNamespaceConfig:
   create: true
+  autocreate:
+    enable: true
+    prefix: user-
   userRoles:
   - admin
 
