@@ -221,7 +221,7 @@ class UserNamespace:
             custom_objects_api.get_cluster_custom_object(
                 'user.openshift.io', 'v1', 'users', self.user_name
             )
-        except:
+        except kubernetes.client.rest.ApiException as e:
             if e.status == 404:
                 self.logger.info(
                     "Propagating delete from User",
