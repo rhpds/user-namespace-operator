@@ -45,6 +45,28 @@ spec:
             required:
             - user
             properties:
+              config:
+                description: >-
+                  Reference to UserNamespaceConfig related to this UserNamespace.
+                type: object
+                required:
+                - apiVersion
+                - kind
+                - name
+                - uid
+                properties:
+                  apiVersion:
+                    type: string
+                    enum:
+                    - usernamespace.gpte.redhat.com/v1
+                  kind:
+                    type: string
+                    enum:
+                    - UserNamespaceConfig
+                  name:
+                    type: string
+                  uid:
+                    type: string
               user:
                 description: >-
                   Reference to user for whom a namespace is requested.
@@ -67,3 +89,6 @@ spec:
                     type: string
                   uid:
                     type: string
+          status:
+            type: object
+            x-kubernetes-preserve-unknown-fields: true

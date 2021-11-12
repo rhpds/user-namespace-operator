@@ -5,6 +5,11 @@ kind: UserNamespaceConfig
 metadata:
   name: default
 spec:
+  {{- if .Values.defaultUserNamespaceConfig.autocreate.enable }}
+  autocreate:
+    enable: true
+    prefix: {{ .Values.defaultUserNamespaceConfig.autocreate.prefix }}
+  {{- end }}
   templates:
   - name: default
 ---

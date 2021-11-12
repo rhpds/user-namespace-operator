@@ -43,6 +43,22 @@ spec:
               Definition of the UserNamespaceOperator config.
             type: object
             properties:
+              autocreate:
+                description: >-
+                  Configuration to automatically create user namespaces.
+                type: object
+                properties:
+                  enable:
+                    description: >-
+                      Set to true to enable automatic creation of user namespaces for all users.
+                    type: boolean
+                    default: false
+                  prefix:
+                    description: >-
+                      Prefix to add to sanitized username to make namespace name.
+                      Default is "user-".
+                    type: string
+                    default: user-
               templates:
                 description: >-
                   List of templates to apply to initiate namespace.
@@ -62,3 +78,6 @@ spec:
                       description: >-
                         Optional template namespace if template is not in the operator namespace.
                       type: string
+          status:
+            type: object
+            x-kubernetes-preserve-unknown-fields: true

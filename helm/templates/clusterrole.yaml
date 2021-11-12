@@ -10,6 +10,7 @@ rules:
   - usernamespace.gpte.redhat.com
   resources:
   - usernamespaces
+  - usernamespaces/status
   verbs:
   - create
   - delete
