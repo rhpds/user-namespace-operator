@@ -32,6 +32,8 @@ components:
       value: /opt/app-root/src-backup
     - name: ODO_S2I_CONVERTED_DEVFILE
       value: "true"
+    - name: CHECK_INTERVAL
+      value: "10"
     - name: OPERATOR_DOMAIN
       value: usernamespace.gpte.redhat.com
     image: quay.io/redhat-cop/python-kopf-s2i:v1.35
