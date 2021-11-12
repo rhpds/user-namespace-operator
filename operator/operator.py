@@ -16,6 +16,7 @@ else:
 core_v1_api = kubernetes.client.CoreV1Api()
 custom_objects_api = kubernetes.client.CustomObjectsApi()
 
+check_interval = int(os.environ.get('CHECK_INTERVAL', 900))
 operator_domain = os.environ.get('OPERATOR_DOMAIN', 'usernamespace.gpte.redhat.com')
 operator_api_version = os.environ.get('OPERATOR_VERSION', 'v1')
 operator_api_group_version = f"{operator_domain}/{operator_api_version}"
@@ -212,6 +213,26 @@ class UserNamespace:
     def user_uid(self):
         return self.user_reference['uid']
 
+    def check_delete(self):
+        '''
+        Check if user has been deleted and propagate delete if so.
+        '''
+        try:
+            custom_objects_api.get_cluster_custom_object(
+                'user.openshift.io', 'v1', 'users', self.user_name
+            )
+        except:
+            if e.status == 404:
+                self.logger.info(
+                    "Propagating delete from User",
+                    extra = dict(
+                        user=self.user_reference
+                    )
+                )
+                self.delete()
+            else:
+                raise
+
     def check_update_namespace(self, namespace):
         namespace_name = namespace.metadata.name
         updated = False
@@ -359,6 +380,15 @@ class UserNamespace:
 
         for resource_object in processed_template.get('objects', []):
             self.create_resource(resource_object)
+
+    def delete(self):
+        try:
+            custom_objects_api.delete_cluster_custom_object(
+                operator_domain, operator_api_version, 'usernamespaces', self.name
+            )
+        except kubernetes.client.rest.ApiException as e:
+            if e.status != 404:
+                raise
 
     def manage_namespace(self):
         try:
@@ -571,8 +601,21 @@ def usernamespace_handler(**kwargs):
     user_namespace = UserNamespace(**kwargs)
     user_namespace.manage_namespace()
 
+@kopf.timer(operator_domain, operator_api_version, 'usernamespaces', interval=check_interval)
+def usernamespace_check_delete(**kwargs):
+    '''
+    Periodically check if UserNamespace should be deleted following User deletion.
+    OpenShift does not currently propagate deletes for users following owner references.
+    '''
+    user_namespace = UserNamespace(**kwargs)
+    user_namespace.check_delete()
+
+
 @kopf.on.event(operator_domain, operator_api_version, 'usernamespaceconfigs')
 def usernamespaceconfig(event, **_):
+    '''
+    Watch UserNamespaceConfigs for updates.
+    '''
     obj = event.get('object')
     if obj.get('kind') != 'UserNamespaceConfig':
         return
