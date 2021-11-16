@@ -331,6 +331,7 @@ class UserNamespace:
                         uid = self.uid,
                     )
                 ]
+                core_v1_api.replace_namespace(namespace.metadata.name, namespace)
                 break
             except kubernetes.client.rest.ApiException as e:
                 if e.status != 404 and e.status != 409:
