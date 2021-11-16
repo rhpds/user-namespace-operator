@@ -3,10 +3,8 @@ import copy
 import kopf
 import kubernetes
 import logging
-import math
 import os
 import re
-import time
 
 if os.path.exists('/run/secrets/kubernetes.io/serviceaccount/token'):
     kubernetes.config.load_incluster_config()
@@ -43,11 +41,13 @@ class ApiGroup:
         return ApiGroup(resp[0])
 
     def __init__(self, resource_object):
+        self.name = resource_object['groupVersion'].split('/')[0]
+        self.version = resource_object['apiVersion']
         self.resources = [
             ApiGroupResource(r) for r in resource_object.get('resources', [])
         ]
 
-    def get_resource(kind):
+    def get_resource(self, kind):
         for resource in self.resources:
             if resource.kind == kind:
                 return resource
@@ -57,6 +57,7 @@ class ApiGroupResource:
     def __init__(self, resource):
         self.kind = resource['kind']
         self.name = resource['name']
+        self.namespaced = resource['namespaced']
 
     @property
     def plural(self):
@@ -64,19 +65,22 @@ class ApiGroupResource:
 
 
 class InfiniteRelativeBackoff:
-    def __init__(self, n=2, maximum=60):
+    def __init__(self, initial_delay=0.1, n=2, maximum=60):
+        self.initial_delay = initial_delay
         self.n = n
         self.maximum = maximum
 
     def __iter__(self):
-        prev_t = []
-        max_age = self.maximum * math.ceil(math.log(self.maximum) / math.log(self.n))
+        c = 0
         while True:
-            t = time.monotonic()
-            prev_t = [p for p in prev_t if t - p < max_age]
-            delay = self.n ** len(prev_t)
-            prev_t.append(t)
-            yield delay if delay < self.maximum else self.maximum
+            delay = self.initial_delay * self.n ** c
+            if delay > self.maximum:
+                break
+            yield delay
+            c += 1
+
+        while True:
+            yield self.maximum
 
 
 class User:
@@ -193,6 +197,10 @@ class UserNamespace:
         self.uid = uid
 
     @property
+    def config_name(self):
+        return self.spec.get('config', {}).get('name')
+
+    @property
     def reference(self):
         return dict(
             apiVersion = operator_api_group_version,
@@ -267,6 +275,18 @@ class UserNamespace:
             core_v1_api.replace_namespace(namespace_name, namespace)
 
     def create_namespace(self):
+        config = UserNamespaceConfig.get(self.config_name) if self.config_name else None
+        if self.config_name and not config:
+            raise kopf.TemporaryError(
+                f"Unable to find UserNamespaceConfig",
+                extra = dict(
+                    apiVersion = operator_api_group_version,
+                    kind = 'UserNamespaceConfig',
+                    name = self.config_name,
+                ),
+                delay = 60
+            )
+
         # Create using a project request so that the operator will be made an
         # administrator.
         project_request = custom_objects_api.create_cluster_custom_object(
@@ -311,13 +331,14 @@ class UserNamespace:
                         uid = self.uid,
                     )
                 ]
-                return core_v1_api.replace_namespace(self.name, namespace)
+                break
             except kubernetes.client.rest.ApiException as e:
-                if e.status != 409:
+                if e.status != 404 and e.status != 409:
                     raise
 
-        for template in self.templates:
-            self.create_template_resources(template)
+        if config:
+            for template in config.templates:
+                self.create_template_resources(template)
 
     def create_core_resource(self, resource_object):
         kind = resource_object['kind']
@@ -348,13 +369,13 @@ class UserNamespace:
                 delay = 60
             )
 
-        if api_resource.is_namespaced:
+        if api_resource.namespaced:
             return custom_objects_api.create_namespaced_custom_object(
-                group, version, self.name, api_resource.plural, resource_object
+                api_group.name, api_group.version, self.name, api_resource.plural, resource_object
             )
         else:
             return custom_objects_api.create_cluster_custom_object(
-                group, version, api_resource.plural, resource_object
+                api_group.name, api_group.version, api_resource.plural, resource_object
             )
 
     def create_resource(self, resource_object):
@@ -368,14 +389,14 @@ class UserNamespace:
             'template.openshift.io', 'v1', template.namespace, 'templates', template.name
         )
 
-        for parameter in template.get('parameters', []):
+        for parameter in template_resource.get('parameters', []):
             if parameter['name'] == 'PROJECT_NAME':
                 parameter['value'] = self.name
             elif parameter['name'] == 'PROJECT_ADMIN_USER':
                 parameter['value'] = self.user_name
 
         processed_template = custom_objects_api.create_namespaced_custom_object(
-            'template.openshift.io', 'v1', template.namespace, 'processedtemplates', template
+            'template.openshift.io', 'v1', template.namespace, 'processedtemplates', template_resource
         )
 
         for resource_object in processed_template.get('objects', []):
@@ -473,7 +494,7 @@ class UserNamespaceConfig:
     @property
     def templates(self):
         return [
-            userNamespaceTemplate(t) for t in self.spec.get('templates', [])
+            UserNamespaceTemplate(t) for t in self.spec.get('templates', [])
         ]
 
     @property
@@ -554,6 +575,10 @@ class UserNamespaceTemplate:
     def namespace(self):
         return self.spec.get('namespace', operator_namespace)
 
+    @property
+    def parameters(self):
+        return self.spec.get('parameters', [])
+
 
 @kopf.on.startup()
 def startup(settings: kopf.OperatorSettings, **_):
@@ -563,7 +588,7 @@ def startup(settings: kopf.OperatorSettings, **_):
     # Use operator domain as finalizer
     settings.persistence.finalizer = operator_domain
 
-    # Store progress in status. Some objects may be too large to store status in metadata annotations
+    # Store progress in status.
     settings.persistence.progress_storage = kopf.StatusProgressStorage(field='status.kopf.progress')
 
     # Only create events for warnings and errors
