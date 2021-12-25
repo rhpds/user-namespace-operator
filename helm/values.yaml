@@ -12,6 +12,8 @@ namespace:
 defaultUserNamespaceConfig:
   create: true
   autocreate:
+    displayName: User {user_name}
+    description: User namespace for {user_name}.
     enable: true
     prefix: user-
   userRoles:
