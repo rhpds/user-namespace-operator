@@ -7,8 +7,8 @@ metadata:
 spec:
   {{- if .Values.defaultUserNamespaceConfig.autocreate.enable }}
   autocreate:
-    description: {{ quoet .Values.defaultUserNamespaceConfig.autocreate.description }}
-    displayName: {{ quoet .Values.defaultUserNamespaceConfig.autocreate.displayName }}
+    description: {{ quote .Values.defaultUserNamespaceConfig.autocreate.description }}
+    displayName: {{ quote .Values.defaultUserNamespaceConfig.autocreate.displayName }}
     enable: true
     prefix: {{ .Values.defaultUserNamespaceConfig.autocreate.prefix }}
   {{- end }}
