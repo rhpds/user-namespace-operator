@@ -258,7 +258,7 @@ class UserNamespace:
 
     @property
     def display_name(self):
-        return self.spec.get('display_name', f'User {self.user_name}')
+        return self.spec.get('displayName', f'User {self.user_name}')
 
     @property
     def reference(self):
