@@ -30,6 +30,10 @@ spec:
           env:
           - name: OPERATOR_DOMAIN
             value: usernamespace.gpte.redhat.com
+          - name: OPERATOR_SERVICE_ACCOUNT_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: spec.serviceAccountName
           securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}
           image: "{{ include "userNamespaceOperator.image" . }}"

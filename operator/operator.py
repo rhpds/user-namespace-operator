@@ -13,11 +13,14 @@ else:
 
 core_v1_api = kubernetes.client.CoreV1Api()
 custom_objects_api = kubernetes.client.CustomObjectsApi()
+authorization_v1_api = kubernetes.client.AuthorizationV1Api()
+rbac_authorization_v1_api = kubernetes.client.RbacAuthorizationV1Api()
 
 check_interval = int(os.environ.get('CHECK_INTERVAL', 900))
 operator_domain = os.environ.get('OPERATOR_DOMAIN', 'usernamespace.gpte.redhat.com')
 operator_api_version = os.environ.get('OPERATOR_VERSION', 'v1')
 operator_api_group_version = f"{operator_domain}/{operator_api_version}"
+operator_service_account_name = os.environ.get('OPERATOR_SERVICE_ACCOUNT', 'user-namespace-operator')
 
 try:
     with open('/run/secrets/kubernetes.io/serviceaccount/namespace') as f:
@@ -25,6 +28,22 @@ try:
 except FileNotFoundError:
     # Local testing?
     operator_namespace = os.environ.get('OPERATOR_NAMESPACE', 'user-namespace-operator')
+
+
+try:
+    cluster_admin_access_review = authorization_v1_api.create_self_subject_access_review(
+        kubernetes.client.V1SelfSubjectAccessReview(
+            spec = kubernetes.client.V1SelfSubjectAccessReviewSpec(
+                resource_attributes = kubernetes.client.V1ResourceAttributes(
+                    group='*', resource='*', verb='*'
+                )
+            )
+        )
+    )
+    operator_cluster_admin = cluster_admin_access_review.status.allowed
+except kubernetes.client.rest.ApiException as e:
+    operator_cluster_admin = False
+
 
 class ApiGroup:
     instances = {}
@@ -207,6 +226,27 @@ class UserNamespace:
             if e.status != 404:
                 raise
 
+        # Check user-namespace-operator has admin access to existing namespace
+        if namespace and not operator_cluster_admin:
+            try:
+                admin_role_binding = rbac_authorization_v1_api.read_namespaced_role_binding('admin', namespace.metadata.name)
+                if len(admin_role_binding.subjects) < 1:
+                    return
+                # Check the subject for the admin rolebinding
+                if admin_role_binding.subjects[0].kind == 'ServiceAccount':
+                    if admin_role_binding.subjects[0].name != operator_service_account_name \
+                    or admin_role_binding.subjects[0].namespace != operator_namespace:
+                        return
+                # Odd bug? When a service account creates a project request the namespace creates an admin rolebinding with kind "User"
+                if admin_role_binding.subjects[0].kind == 'User':
+                    if admin_role_binding.subjects[0].name != f"system:serviceaccount:{operator_namespace}:{operator_service_account_name}":
+                        return
+            except kubernetes.client.rest.ApiException as e:
+                if e.status == 404 or e.status == 403:
+                    return
+                else:
+                    raise
+
         # Try to create the UserNamespace object, accepting 409 conflict as a
         # normal failure to create.
         try:
@@ -367,55 +407,105 @@ class UserNamespace:
                 delay = 60
             )
 
-        # Create using a project request so that the operator will be made an
-        # administrator.
-        project_request = custom_objects_api.create_cluster_custom_object(
-            'project.openshift.io', 'v1', 'projectrequests',
-            {
-                'apiVersion': 'project.openshift.io/v1',
-                'kind': 'ProjectRequest',
-                'metadata': {
-                    'name': self.name,
-                },
-                'description': self.description,
-                'displayName': self.display_name,
-            }
-        )
-
-        while True:
-            try:
-                namespace = core_v1_api.read_namespace(self.name)
-
-                self.logger.info(
-                    'Namespace created',
-                    extra = dict(
-                        Namespace = dict(
-                            apiVersion = 'v1',
-                            kind = 'Namespace',
-                            name = namespace.metadata.name,
-                            uid = namespace.metadata.uid,
-                        )
+        if operator_cluster_admin:
+            core_v1_api.create_namespace(
+                kubernetes.client.V1Namespace(
+                    metadata = kubernetes.client.V1ObjectMeta(
+                        annotations = {
+                            'openshift.io/description': self.description,
+                            'openshift.io/displayName': self.display_name,
+                            'openshift.io/requester': self.user_name,
+                        },
+                        labels = {
+                            f"{operator_domain}/user-uid": self.user_uid
+                        },
+                        owner_references = [
+                            kubernetes.client.V1OwnerReference(
+                                api_version = operator_api_group_version,
+                                controller = True,
+                                kind = 'UserNamespace',
+                                name = self.name,
+                                uid = self.uid,
+                            )
+                        ],
+                        name = self.name,
                     )
                 )
+            )
+            # Create admin role binding for operator to ensure management can
+            #  continue if cluster-admin privileges are ever removed.
+            rbac_authorization_v1_api.create_namespaced_role_binding(
+                self.name,
+                kubernetes.client.V1RoleBinding(
+                    metadata = kubernetes.client.V1ObjectMeta(
+                        name = 'admin',
+                    ),
+                    role_ref = kubernetes.client.V1RoleRef(
+                        api_group = 'rbac.authorization.k8s.io',
+                        kind = 'ClusterRole',
+                        name = 'admin',
 
-                namespace.metadata.annotations['openshift.io/requester'] = self.user_name
-                namespace.metadata.labels = {
-                    operator_domain + '/user-uid': self.user_uid
+                    ),
+                    subjects = [
+                        kubernetes.client.V1Subject(
+                            kind = 'ServiceAccount',
+                            name = operator_service_account_name,
+                            namespace = operator_namespace,
+                        )
+                    ],
+                )
+            )
+
+        else:
+            # Create using a project request so that the operator will be made an
+            # administrator.
+            project_request = custom_objects_api.create_cluster_custom_object(
+                'project.openshift.io', 'v1', 'projectrequests',
+                {
+                    'apiVersion': 'project.openshift.io/v1',
+                    'kind': 'ProjectRequest',
+                    'metadata': {
+                        'name': self.name,
+                    },
+                    'description': self.description,
+                    'displayName': self.display_name,
                 }
-                namespace.metadata.owner_references = [
-                    kubernetes.client.V1OwnerReference(
-                        api_version = operator_api_group_version,
-                        controller = True,
-                        kind = 'UserNamespace',
-                        name = self.name,
-                        uid = self.uid,
+            )
+
+            while True:
+                try:
+                    namespace = core_v1_api.read_namespace(self.name)
+
+                    self.logger.info(
+                        'Namespace created',
+                        extra = dict(
+                            Namespace = dict(
+                                apiVersion = 'v1',
+                                kind = 'Namespace',
+                                name = namespace.metadata.name,
+                                uid = namespace.metadata.uid,
+                            )
+                        )
                     )
-                ]
-                core_v1_api.replace_namespace(namespace.metadata.name, namespace)
-                break
-            except kubernetes.client.rest.ApiException as e:
-                if e.status != 404 and e.status != 409:
-                    raise
+
+                    namespace.metadata.annotations['openshift.io/requester'] = self.user_name
+                    namespace.metadata.labels = {
+                        operator_domain + '/user-uid': self.user_uid
+                    }
+                    namespace.metadata.owner_references = [
+                        kubernetes.client.V1OwnerReference(
+                            api_version = operator_api_group_version,
+                            controller = True,
+                            kind = 'UserNamespace',
+                            name = self.name,
+                            uid = self.uid,
+                        )
+                    ]
+                    core_v1_api.replace_namespace(namespace.metadata.name, namespace)
+                    break
+                except kubernetes.client.rest.ApiException as e:
+                    if e.status != 404 and e.status != 409:
+                        raise
 
         if config:
             for template in config.templates:
@@ -691,7 +781,7 @@ class UserNamespaceTemplate:
 
 
 @kopf.on.startup()
-def startup(settings: kopf.OperatorSettings, **_):
+def startup(logger, settings: kopf.OperatorSettings, **_):
     # Never give up from network errors
     settings.networking.error_backoffs = InfiniteRelativeBackoff()
 
@@ -709,6 +799,11 @@ def startup(settings: kopf.OperatorSettings, **_):
 
     # Load all UserNamespaceConfig definitions
     UserNamespaceConfig.preload()
+
+    if operator_cluster_admin:
+        logger.info("Running as cluster-admin")
+    else:
+        logger.info("Running without cluster-admin privileges")
 
 
 @kopf.on.event('user.openshift.io', 'v1', 'users')

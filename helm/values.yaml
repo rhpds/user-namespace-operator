@@ -24,6 +24,9 @@ selfProvision:
   groups:
   - system:authenticated:oauth
 
+clusterRole:
+  clusterAdmin: true
+
 deploy: true
 replicaCount: 1
 

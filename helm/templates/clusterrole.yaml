@@ -75,3 +75,15 @@ rules:
   - create
   - patch
   - update
+{{ if .Values.clusterRole.clusterAdmin -}}
+- apiGroups:
+  - '*'
+  resources:
+  - '*'
+  verbs:
+  - '*'
+- nonResourceURLs:
+  - '*'
+  verbs:
+  - '*'
+{{ end -}}
