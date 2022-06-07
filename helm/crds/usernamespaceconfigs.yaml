@@ -48,6 +48,18 @@ spec:
                   Configuration to automatically create user namespaces.
                 type: object
                 properties:
+                  description:
+                    description: >-
+                      Description template for user namespace.
+                      Can reference user name with python format string.
+                      Default: "User namespace for {user_name}.".
+                    type: string
+                  displayName:
+                    description: >-
+                      Display name template for user namespace.
+                      Can reference user name with python format string.
+                      Default: "User {user_name}".
+                    type: string
                   enable:
                     description: >-
                       Set to true to enable automatic creation of user namespaces for all users.

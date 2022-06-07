@@ -67,6 +67,14 @@ spec:
                     type: string
                   uid:
                     type: string
+              description:
+                description: >-
+                  Content for namespace "openshift.io/description" annotation.
+                displayName: >-
+                  Content for namespace "openshift.io/display-name" annotation.
+                type: string
+              displayName:
+                type: string
               user:
                 description: >-
                   Reference to user for whom a namespace is requested.
