@@ -1,41 +1,27 @@
 commands:
 - exec:
-    commandLine: /opt/odo/bin/s2i-setup && /opt/odo/bin/assemble-and-restart
+    commandLine: /usr/libexec/s2i/assemble
     component: s2i-builder
     group:
       isDefault: true
       kind: build
+    workingDir: ${PROJECT_SOURCE}
   id: s2i-assemble
 - exec:
-    commandLine: /opt/odo/bin/run
+    commandLine: /usr/libexec/s2i/run
     component: s2i-builder
     group:
       isDefault: true
       kind: run
+    workingDir: ${PROJECT_SOURCE}
   id: s2i-run
 components:
 - container:
     env:
-    - name: ODO_S2I_SCRIPTS_URL
-      value: /usr/libexec/s2i
-    - name: ODO_S2I_SCRIPTS_PROTOCOL
-      value: image://
-    - name: ODO_S2I_SRC_BIN_PATH
-      value: /tmp
-    - name: ODO_S2I_DEPLOYMENT_DIR
-      value: ""
-    - name: ODO_S2I_WORKING_DIR
-      value: /opt/app-root/src
-    - name: ODO_S2I_BUILDER_IMG
-      value: quay.io/redhat-cop/python-kopf-s2i:v1.35
-    - name: ODO_SRC_BACKUP_DIR
-      value: /opt/app-root/src-backup
-    - name: ODO_S2I_CONVERTED_DEVFILE
-      value: "true"
-    - name: CHECK_INTERVAL
-      value: "10"
     - name: OPERATOR_DOMAIN
       value: usernamespace.gpte.redhat.com
+    - name: OPERATOR_SERVICE_ACCOUNT_NAME
+      value: default
     image: quay.io/redhat-cop/python-kopf-s2i:v1.35
     mountSources: true
     sourceMapping: /tmp/projects
