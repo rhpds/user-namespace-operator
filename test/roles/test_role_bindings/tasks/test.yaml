@@ -1,0 +1,329 @@
+---
+- name: Create user test-alice
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: user.openshift.io/v1
+      kind: User
+      metadata:
+        name: test-alice
+      identities:
+      - user-namespace-operator-test:test-alice
+  register: r_create_user
+
+- name: Set test_alice_uid
+  set_fact:
+    test_alice_uid: "{{ r_create_user.result.metadata.uid }}"
+
+- name: Create Identity user-namespace-operator-test:test-alice
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: user.openshift.io/v1
+      kind: Identity
+      metadata:
+        name: user-namespace-operator-test:test-alice
+      extra:
+        email: test-alice@example.com
+      providerName: user-namespace-operator-test
+      providerUserName: test-alice
+      user:
+        name: test-alice
+        uid: "{{ test_alice_uid }}"
+
+- name: Create group test-role-bindings
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: user.openshift.io/v1
+      kind: Group
+      metadata:
+        name: test-role-bindings
+      users:
+      - test-alice
+      - test-bob
+
+- name: Create test-role-bindings UserNamespaceConfig
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: usernamespace.gpte.redhat.com/v1
+      kind: UserNamespaceConfig
+      metadata:
+        name: test-role-bindings
+      spec:
+        autocreate:
+          description: This namespace was created to test role bindings for {user_name}.
+          displayName: Test role bindings namespace for {user_name}
+          enable: true
+          prefix: test-role-bindings-
+          when: "'test-role-bindings' in group_names"
+        managementIntervalSeconds: 5
+        roleBindings:
+        - roleName: admin
+
+- name: Verify test-role-bindings-test-alice namespace
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Namespace
+    name: test-role-bindings-test-alice
+  register: r_verify_namespace
+  failed_when: >-
+    r_verify_namespace.resources | length != 1 or
+    r_verify_namespace.resources[0].metadata.name != 'test-role-bindings-test-alice' or
+    r_verify_namespace.resources[0].metadata.annotations['openshift.io/description'] != 'This namespace was created to test role bindings for test-alice.' or
+    r_verify_namespace.resources[0].metadata.annotations['openshift.io/display-name'] != 'Test role bindings namespace for test-alice' or
+    r_verify_namespace.resources[0].metadata.labels['usernamespace.gpte.redhat.com/user-uid'] != test_alice_uid
+  until: r_verify_namespace is success
+  retries: 30
+  delay: 2
+
+- name: Verify test-role-bindings-test-alice admin:test-alice rolebinding
+  kubernetes.core.k8s_info:
+    api_version: rbac.authorization.k8s.io/v1
+    kind: RoleBinding
+    name: admin:test-alice
+    namespace: test-role-bindings-test-alice
+  register: r_verify_rolebinding
+  failed_when: >-
+    r_verify_rolebinding.resources | length != 1 or
+    r_verify_rolebinding.resources[0].roleRef.apiGroup != 'rbac.authorization.k8s.io' or
+    r_verify_rolebinding.resources[0].roleRef.kind != 'ClusterRole' or
+    r_verify_rolebinding.resources[0].roleRef.name != 'admin' or
+    r_verify_rolebinding.resources[0].subjects | length != 1 or
+    r_verify_rolebinding.resources[0].subjects[0].kind != 'User' or
+    r_verify_rolebinding.resources[0].subjects[0].name != 'test-alice'
+  until: r_verify_rolebinding is success
+  retries: 30
+  delay: 2
+
+- name: Create user test-bob
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: user.openshift.io/v1
+      kind: User
+      metadata:
+        name: test-bob
+      identities:
+      - user-namespace-operator-test:test-bob
+  register: r_create_user
+
+- name: Set test_bob_uid
+  set_fact:
+    test_bob_uid: "{{ r_create_user.result.metadata.uid }}"
+
+- name: Create Identity user-namespace-operator-test:test-bob
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: user.openshift.io/v1
+      kind: Identity
+      metadata:
+        name: user-namespace-operator-test:test-bob
+      extra:
+        email: test-bob@example.com
+      providerName: user-namespace-operator-test
+      providerUserName: test-bob
+      user:
+        name: test-bob
+        uid: "{{ test_bob_uid }}"
+
+- name: Verify test-role-bindings-test-bob namespace
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Namespace
+    name: test-role-bindings-test-bob
+  register: r_verify_namespace
+  failed_when: >-
+    r_verify_namespace.resources | length != 1 or
+    r_verify_namespace.resources[0].metadata.name != 'test-role-bindings-test-bob' or
+    r_verify_namespace.resources[0].metadata.annotations['openshift.io/description'] != 'This namespace was created to test role bindings for test-bob.' or
+    r_verify_namespace.resources[0].metadata.annotations['openshift.io/display-name'] != 'Test role bindings namespace for test-bob' or
+    r_verify_namespace.resources[0].metadata.labels['usernamespace.gpte.redhat.com/user-uid'] != test_bob_uid
+  until: r_verify_namespace is success
+  retries: 30
+  delay: 2
+
+- name: Verify test-role-bindings-test-bob admin:test-bob rolebinding
+  kubernetes.core.k8s_info:
+    api_version: rbac.authorization.k8s.io/v1
+    kind: RoleBinding
+    name: admin:test-bob
+    namespace: test-role-bindings-test-bob
+  register: r_verify_rolebinding
+  failed_when: >-
+    r_verify_rolebinding.resources | length != 1 or
+    r_verify_rolebinding.resources[0].roleRef.apiGroup != 'rbac.authorization.k8s.io' or
+    r_verify_rolebinding.resources[0].roleRef.kind != 'ClusterRole' or
+    r_verify_rolebinding.resources[0].roleRef.name != 'admin' or
+    r_verify_rolebinding.resources[0].subjects | length != 1 or
+    r_verify_rolebinding.resources[0].subjects[0].kind != 'User' or
+    r_verify_rolebinding.resources[0].subjects[0].name != 'test-bob'
+  until: r_verify_rolebinding is success
+  retries: 30
+  delay: 2
+
+- name: Delete user test-bob
+  kubernetes.core.k8s:
+    api_version: user.openshift.io/v1
+    kind: User
+    name: test-bob
+    state: absent
+
+- name: Delete Identity user-namespace-operator-test:test-bob
+  kubernetes.core.k8s:
+    api_version: user.openshift.io/v1
+    kind: Identity
+    name: user-namespace-operator-test:test-bob
+    state: absent
+
+- name: Verify test-role-bindings-test-bob namespace deleted
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Namespace
+    name: test-role-bindings-test-bob
+  register: r_verify_namespace
+  failed_when: >-
+    r_verify_namespace.resources | length != 0
+  until: r_verify_namespace is success
+  retries: 30
+  delay: 2
+
+- name: Update test-role-bindings UserNamespaceConfig to edit role
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: usernamespace.gpte.redhat.com/v1
+      kind: UserNamespaceConfig
+      metadata:
+        name: test-role-bindings
+      spec:
+        autocreate:
+          description: This namespace was created to test role bindings for {user_name}.
+          displayName: Test role bindings namespace for {user_name}
+          enable: true
+          prefix: test-role-bindings-
+          when: "'test-role-bindings' in group_names"
+        managementIntervalSeconds: 5
+        roleBindings:
+        - roleName: edit
+
+- name: Verify test-role-bindings-test-alice edit:test-alice rolebinding
+  kubernetes.core.k8s_info:
+    api_version: rbac.authorization.k8s.io/v1
+    kind: RoleBinding
+    name: edit:test-alice
+    namespace: test-role-bindings-test-alice
+  register: r_verify_rolebinding
+  failed_when: >-
+    r_verify_rolebinding.resources | length != 1 or
+    r_verify_rolebinding.resources[0].roleRef.apiGroup != 'rbac.authorization.k8s.io' or
+    r_verify_rolebinding.resources[0].roleRef.kind != 'ClusterRole' or
+    r_verify_rolebinding.resources[0].roleRef.name != 'edit' or
+    r_verify_rolebinding.resources[0].subjects | length != 1 or
+    r_verify_rolebinding.resources[0].subjects[0].kind != 'User' or
+    r_verify_rolebinding.resources[0].subjects[0].name != 'test-alice'
+  until: r_verify_rolebinding is success
+  retries: 30
+  delay: 2
+
+- name: Verify test-role-bindings-test-alice admin:test-alice rolebinding deleted
+  kubernetes.core.k8s_info:
+    api_version: rbac.authorization.k8s.io/v1
+    kind: RoleBinding
+    name: admin:test-alice
+    namespace: test-role-bindings-test-alice
+  register: r_verify_rolebinding
+  failed_when: >-
+    r_verify_rolebinding.resources | length != 0
+  until: r_verify_rolebinding is success
+  retries: 30
+  delay: 2
+
+- name: Update test-role-bindings UserNamespaceConfig to add condition
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: usernamespace.gpte.redhat.com/v1
+      kind: UserNamespaceConfig
+      metadata:
+        name: test-role-bindings
+      spec:
+        autocreate:
+          description: This namespace was created to test role bindings for {user_name}.
+          displayName: Test role bindings namespace for {user_name}
+          enable: true
+          prefix: test-role-bindings-
+          when: "'test-role-bindings' in group_names"
+        managementIntervalSeconds: 5
+        roleBindings:
+        - roleName: edit
+          when: "'test-role-bindings-edit' in group_names"
+
+- name: Verify test-role-bindings-test-alice edit:test-alice rolebinding deleted
+  kubernetes.core.k8s_info:
+    api_version: rbac.authorization.k8s.io/v1
+    kind: RoleBinding
+    name: edit:test-alice
+    namespace: test-role-bindings-test-alice
+  register: r_verify_rolebinding
+  failed_when: >-
+    r_verify_rolebinding.resources | length != 0
+  until: r_verify_rolebinding is success
+  retries: 30
+  delay: 2
+
+- name: Create group test-role-bindings
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: user.openshift.io/v1
+      kind: Group
+      metadata:
+        name: test-role-bindings-edit
+      users:
+      - test-alice
+
+- name: Verify test-role-bindings-test-alice edit:test-alice rolebinding recreated
+  kubernetes.core.k8s_info:
+    api_version: rbac.authorization.k8s.io/v1
+    kind: RoleBinding
+    name: edit:test-alice
+    namespace: test-role-bindings-test-alice
+  register: r_verify_rolebinding
+  failed_when: >-
+    r_verify_rolebinding.resources | length != 1 or
+    r_verify_rolebinding.resources[0].roleRef.apiGroup != 'rbac.authorization.k8s.io' or
+    r_verify_rolebinding.resources[0].roleRef.kind != 'ClusterRole' or
+    r_verify_rolebinding.resources[0].roleRef.name != 'edit' or
+    r_verify_rolebinding.resources[0].subjects | length != 1 or
+    r_verify_rolebinding.resources[0].subjects[0].kind != 'User' or
+    r_verify_rolebinding.resources[0].subjects[0].name != 'test-alice'
+  until: r_verify_rolebinding is success
+  retries: 30
+  delay: 2
+
+- name: Delete user test-alice
+  kubernetes.core.k8s:
+    api_version: user.openshift.io/v1
+    kind: User
+    name: test-alice
+    state: absent
+
+- name: Delete Identity user-namespace-operator-test:test-alice
+  kubernetes.core.k8s:
+    api_version: user.openshift.io/v1
+    kind: Identity
+    name: user-namespace-operator-test:test-alice
+    state: absent
+
+- name: Verify test-role-bindings-test-alice namespace deleted
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Namespace
+    name: test-role-bindings-test-alice
+  register: r_verify_namespace
+  failed_when: >-
+    r_verify_namespace.resources | length != 0
+  until: r_verify_namespace is success
+  retries: 30
+  delay: 2
+
+- name: Remove test-role-bindings UserNamespaceConfig
+  kubernetes.core.k8s:
+    api_version: usernamespace.gpte.redhat.com/v1
+    kind: UserNamespaceConfig
+    name: test-role-bindings
+    state: absent

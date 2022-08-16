@@ -28,6 +28,13 @@ rules:
   - list
   - watch
 - apiGroups:
+  - usernamespace.gpte.redhat.com
+  resources:
+  - usernamespaceconfigs/status
+  verbs:
+  - patch
+  - update
+- apiGroups:
   - template.openshift.io
   resources:
   - templates
@@ -44,6 +51,7 @@ rules:
 - apiGroups:
   - user.openshift.io
   resources:
+  - groups
   - users
   verbs:
   - get

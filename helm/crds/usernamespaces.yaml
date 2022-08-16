@@ -100,3 +100,23 @@ spec:
           status:
             type: object
             x-kubernetes-preserve-unknown-fields: true
+            properties:
+              managedResources:
+                description: >-
+                  List of resources managed for the namespace.
+                type: array
+                items:
+                  type: object
+                  requeired:
+                  - apiVersion
+                  - kind
+                  - name
+                  properties:
+                    apiVersion:
+                      type: string
+                    kind:
+                      type: string
+                    name:
+                      type: string
+                    namespace:
+                      type: string

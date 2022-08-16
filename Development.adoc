@@ -15,19 +15,20 @@ https://docs.openshift.com/container-platform/latest/cli_reference/developer_cli
 
 . Create resources required for development from helm chart:
 +
---------------------------------------------------
+-----------------------------------------------
 helm template helm/ \
 --include-crds \
 --set deploy=false \
---set namespace.name=user-namespace-operator-dev \
+--set namespace.name=user-namespace-operator \
+--set defaultUserNamespaceConfig.create=false \
 | oc apply -f -
---------------------------------------------------
+-----------------------------------------------
 
-. Change project namespace to `user-namespace-operator-dev`:
+. Change project namespace to `user-namespace-operator`:
 +
--------------------------------------------
-odo project set user-namespace-operator-dev
--------------------------------------------
+---------------------------------------
+odo project set user-namespace-operator
+---------------------------------------
 
 . Grant privileges for cluster role `user-namespace-operator` to default service account:
 +

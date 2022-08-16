@@ -1,0 +1,362 @@
+---
+- name: Create user test-alice
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: user.openshift.io/v1
+      kind: User
+      metadata:
+        name: test-alice
+      identities:
+      - user-namespace-operator-test:test-alice
+  register: r_create_user
+
+- name: Set test_alice_uid
+  set_fact:
+    test_alice_uid: "{{ r_create_user.result.metadata.uid }}"
+
+- name: Create Identity user-namespace-operator-test:test-alice
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: user.openshift.io/v1
+      kind: Identity
+      metadata:
+        name: user-namespace-operator-test:test-alice
+      extra:
+        email: test-alice@example.com
+      providerName: user-namespace-operator-test
+      providerUserName: test-alice
+      user:
+        name: test-alice
+        uid: "{{ test_alice_uid }}"
+
+- name: Create group test-templates
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: user.openshift.io/v1
+      kind: Group
+      metadata:
+        name: test-templates
+      users:
+      - test-alice
+
+- name: Create test-admin template
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: template.openshift.io/v1
+      kind: Template
+      metadata:
+        name: test-admin
+        namespace: "{{ test_namespace }}"
+      parameters:
+      - name: PROJECT_NAME
+      - name: PROJECT_ADMIN_USER
+      objects:
+      - apiVersion: rbac.authorization.k8s.io/v1
+        kind: RoleBinding
+        metadata:
+          name: admin:${PROJECT_ADMIN_USER}
+          namespace: ${PROJECT_NAME}
+        roleRef:
+          apiGroup: rbac.authorization.k8s.io
+          kind: ClusterRole
+          name: admin
+        subjects:
+        - apiGroup: rbac.authorization.k8s.io
+          kind: User
+          name: ${PROJECT_ADMIN_USER}
+
+- name: Create test-templates UserNamespaceConfig
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: usernamespace.gpte.redhat.com/v1
+      kind: UserNamespaceConfig
+      metadata:
+        name: test-templates
+      spec:
+        autocreate:
+          description: This namespace was created to test templates for {user_name}.
+          displayName: Test templates namespace for {user_name}
+          enable: true
+          prefix: test-templates-
+          when: "'test-templates' in group_names"
+        managementIntervalSeconds: 5
+        templates:
+        - name: test-admin
+
+- name: Verify test-templates-test-alice namespace
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Namespace
+    name: test-templates-test-alice
+  register: r_verify_namespace
+  failed_when: >-
+    r_verify_namespace.resources | length != 1 or
+    r_verify_namespace.resources[0].metadata.name != 'test-templates-test-alice' or
+    r_verify_namespace.resources[0].metadata.annotations['openshift.io/description'] != 'This namespace was created to test templates for test-alice.' or
+    r_verify_namespace.resources[0].metadata.annotations['openshift.io/display-name'] != 'Test templates namespace for test-alice' or
+    r_verify_namespace.resources[0].metadata.labels['usernamespace.gpte.redhat.com/user-uid'] != test_alice_uid
+  until: r_verify_namespace is success
+  retries: 30
+  delay: 2
+
+- name: Verify test-templates-test-alice admin:test-alice rolebinding
+  kubernetes.core.k8s_info:
+    api_version: rbac.authorization.k8s.io/v1
+    kind: RoleBinding
+    name: admin:test-alice
+    namespace: test-templates-test-alice
+  register: r_verify_rolebinding
+  failed_when: >-
+    r_verify_rolebinding.resources | length != 1 or
+    r_verify_rolebinding.resources[0].roleRef.apiGroup != 'rbac.authorization.k8s.io' or
+    r_verify_rolebinding.resources[0].roleRef.kind != 'ClusterRole' or
+    r_verify_rolebinding.resources[0].roleRef.name != 'admin' or
+    r_verify_rolebinding.resources[0].subjects | length != 1 or
+    r_verify_rolebinding.resources[0].subjects[0].kind != 'User' or
+    r_verify_rolebinding.resources[0].subjects[0].name != 'test-alice'
+  until: r_verify_rolebinding is success
+  retries: 30
+  delay: 2
+
+- name: Create user test-bob
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: user.openshift.io/v1
+      kind: User
+      metadata:
+        name: test-bob
+      identities:
+      - user-namespace-operator-test:test-bob
+  register: r_create_user
+
+- name: Set test_bob_uid
+  set_fact:
+    test_bob_uid: "{{ r_create_user.result.metadata.uid }}"
+
+- name: Create Identity user-namespace-operator-test:test-bob
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: user.openshift.io/v1
+      kind: Identity
+      metadata:
+        name: user-namespace-operator-test:test-bob
+      extra:
+        email: test-bob@example.com
+      providerName: user-namespace-operator-test
+      providerUserName: test-bob
+      user:
+        name: test-bob
+        uid: "{{ test_bob_uid }}"
+
+- name: Pause
+  pause:
+    seconds: 5
+
+- name: Verify test-templates-test-bob namespace not created
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Namespace
+    name: test-templates-test-bob
+  register: r_verify_namespace
+  failed_when: >-
+    r_verify_namespace.resources | length != 0
+  until: r_verify_namespace is success
+  retries: 30
+  delay: 2
+
+- name: Update group test-templates ot add test-bob
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: user.openshift.io/v1
+      kind: Group
+      metadata:
+        name: test-templates
+      users:
+      - test-alice
+      - test-bob
+
+- name: Verify test-templates-test-bob namespace
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Namespace
+    name: test-templates-test-bob
+  register: r_verify_namespace
+  failed_when: >-
+    r_verify_namespace.resources | length != 1 or
+    r_verify_namespace.resources[0].metadata.name != 'test-templates-test-bob' or
+    r_verify_namespace.resources[0].metadata.annotations['openshift.io/description'] != 'This namespace was created to test templates for test-bob.' or
+    r_verify_namespace.resources[0].metadata.annotations['openshift.io/display-name'] != 'Test templates namespace for test-bob' or
+    r_verify_namespace.resources[0].metadata.labels['usernamespace.gpte.redhat.com/user-uid'] != test_bob_uid
+  until: r_verify_namespace is success
+  retries: 30
+  delay: 2
+
+- name: Verify test-templates-test-bob namespace
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Namespace
+    name: test-templates-test-bob
+  register: r_verify_namespace
+  failed_when: >-
+    r_verify_namespace.resources | length != 1 or
+    r_verify_namespace.resources[0].metadata.name != 'test-templates-test-bob' or
+    r_verify_namespace.resources[0].metadata.annotations['openshift.io/description'] != 'This namespace was created to test templates for test-bob.' or
+    r_verify_namespace.resources[0].metadata.annotations['openshift.io/display-name'] != 'Test templates namespace for test-bob' or
+    r_verify_namespace.resources[0].metadata.labels['usernamespace.gpte.redhat.com/user-uid'] != test_bob_uid
+  until: r_verify_namespace is success
+  retries: 30
+  delay: 2
+
+- name: Verify test-templates-test-bob admin:test-bob rolebinding
+  kubernetes.core.k8s_info:
+    api_version: rbac.authorization.k8s.io/v1
+    kind: RoleBinding
+    name: admin:test-bob
+    namespace: test-templates-test-bob
+  register: r_verify_rolebinding
+  failed_when: >-
+    r_verify_rolebinding.resources | length != 1 or
+    r_verify_rolebinding.resources[0].roleRef.apiGroup != 'rbac.authorization.k8s.io' or
+    r_verify_rolebinding.resources[0].roleRef.kind != 'ClusterRole' or
+    r_verify_rolebinding.resources[0].roleRef.name != 'admin' or
+    r_verify_rolebinding.resources[0].subjects | length != 1 or
+    r_verify_rolebinding.resources[0].subjects[0].kind != 'User' or
+    r_verify_rolebinding.resources[0].subjects[0].name != 'test-bob'
+  until: r_verify_rolebinding is success
+  retries: 30
+  delay: 2
+
+- name: Delete user test-bob
+  kubernetes.core.k8s:
+    api_version: user.openshift.io/v1
+    kind: User
+    name: test-bob
+    state: absent
+
+- name: Delete Identity user-namespace-operator-test:test-bob
+  kubernetes.core.k8s:
+    api_version: user.openshift.io/v1
+    kind: Identity
+    name: user-namespace-operator-test:test-bob
+    state: absent
+
+- name: Verify test-templates-test-bob namespace deleted
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Namespace
+    name: test-templates-test-bob
+  register: r_verify_namespace
+  failed_when: >-
+    r_verify_namespace.resources | length != 0
+  until: r_verify_namespace is success
+  retries: 30
+  delay: 2
+
+- name: Create test-edit template
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: template.openshift.io/v1
+      kind: Template
+      metadata:
+        name: test-edit
+        namespace: "{{ test_namespace }}"
+      parameters:
+      - name: PROJECT_NAME
+      - name: PROJECT_ADMIN_USER
+      objects:
+      - apiVersion: rbac.authorization.k8s.io/v1
+        kind: RoleBinding
+        metadata:
+          name: edit:${PROJECT_ADMIN_USER}
+          namespace: ${PROJECT_NAME}
+        roleRef:
+          apiGroup: rbac.authorization.k8s.io
+          kind: ClusterRole
+          name: edit
+        subjects:
+        - apiGroup: rbac.authorization.k8s.io
+          kind: User
+          name: ${PROJECT_ADMIN_USER}
+
+- name: Update test-templates UserNamespaceConfig to use test-edit template
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: usernamespace.gpte.redhat.com/v1
+      kind: UserNamespaceConfig
+      metadata:
+        name: test-templates
+      spec:
+        autocreate:
+          description: This namespace was created to test templates for {user_name}.
+          displayName: Test templates namespace for {user_name}
+          enable: true
+          prefix: test-templates-
+          when: "'test-templates' in group_names"
+        managementIntervalSeconds: 5
+        templates:
+        - name: test-edit
+
+- name: Verify test-templates-test-alice edit:test-alice rolebinding
+  kubernetes.core.k8s_info:
+    api_version: rbac.authorization.k8s.io/v1
+    kind: RoleBinding
+    name: edit:test-alice
+    namespace: test-templates-test-alice
+  register: r_verify_rolebinding
+  failed_when: >-
+    r_verify_rolebinding.resources | length != 1 or
+    r_verify_rolebinding.resources[0].roleRef.apiGroup != 'rbac.authorization.k8s.io' or
+    r_verify_rolebinding.resources[0].roleRef.kind != 'ClusterRole' or
+    r_verify_rolebinding.resources[0].roleRef.name != 'edit' or
+    r_verify_rolebinding.resources[0].subjects | length != 1 or
+    r_verify_rolebinding.resources[0].subjects[0].kind != 'User' or
+    r_verify_rolebinding.resources[0].subjects[0].name != 'test-alice'
+  until: r_verify_rolebinding is success
+  retries: 30
+  delay: 2
+
+- name: Verify test-templates-test-alice admin:test-alice rolebinding deleted
+  kubernetes.core.k8s_info:
+    api_version: rbac.authorization.k8s.io/v1
+    kind: RoleBinding
+    name: admin:test-alice
+    namespace: test-templates-test-alice
+  register: r_verify_rolebinding
+  failed_when: >-
+    r_verify_rolebinding.resources | length != 0
+  until: r_verify_rolebinding is success
+  retries: 30
+  delay: 2
+
+- name: Delete user test-alice
+  kubernetes.core.k8s:
+    api_version: user.openshift.io/v1
+    kind: User
+    name: test-alice
+    state: absent
+
+- name: Delete Identity user-namespace-operator-test:test-alice
+  kubernetes.core.k8s:
+    api_version: user.openshift.io/v1
+    kind: Identity
+    name: user-namespace-operator-test:test-alice
+    state: absent
+
+- name: Verify test-templates-test-alice namespace deleted
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Namespace
+    name: test-templates-test-alice
+  register: r_verify_namespace
+  failed_when: >-
+    r_verify_namespace.resources | length != 0
+  until: r_verify_namespace is success
+  retries: 30
+  delay: 2
+
+- name: Remove test-templates UserNamespaceConfig
+  kubernetes.core.k8s:
+    api_version: usernamespace.gpte.redhat.com/v1
+    kind: UserNamespaceConfig
+    name: test-templates
+    state: absent
