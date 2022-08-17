@@ -14,3 +14,4 @@ spec:
   {{- end }}
   roleBindings:
     {{- toYaml .Values.defaultUserNamespaceConfig.roleBindings | nindent 4 }}
+{{- end }}
