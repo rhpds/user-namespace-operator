@@ -123,10 +123,7 @@ spec:
                       description: >-
                         Type of template.
                         If openshift then name must be set and namespace may optionally specify the namespace.
-                        If jinja2 then content must be set.
-                      default: openshift
                       enum:
-                      - jinja2
                       - openshift
           status:
             type: object
