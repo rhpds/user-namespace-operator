@@ -16,8 +16,8 @@ defaultUserNamespaceConfig:
     description: User namespace for {user_name}.
     enable: true
     prefix: user-
-  userRoles:
-  - admin
+  roleBindings:
+  - roleName: admin
 
 selfProvision:
   create: true
