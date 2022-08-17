@@ -79,7 +79,6 @@
           enable: true
           prefix: test-templates-
           when: "'test-templates' in group_names"
-        managementIntervalSeconds: 5
         templates:
         - name: test-admin
 
@@ -292,7 +291,6 @@
           enable: true
           prefix: test-templates-
           when: "'test-templates' in group_names"
-        managementIntervalSeconds: 5
         templates:
         - name: test-edit
 

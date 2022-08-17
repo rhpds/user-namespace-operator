@@ -123,15 +123,13 @@ class Group:
         return Group.instances.pop(name, None)
 
     def __init__(self, resource_object):
+        self.prev_users = self.users if hasattr(self, 'users') else set()
+        self.users = set(resource_object.get('users', []))
         self.resource_object = resource_object
 
     @property
     def name(self):
         return self.resource_object['metadata']['name']
-
-    @property
-    def users(self):
-        return self.resource_object.get('users', [])
 
     def has_user(self, user_name):
         return user_name in self.users
@@ -201,6 +199,12 @@ class User:
                 operator_domain, operator_api_version, 'usernamespaces', name
             )
 
+    def manage(self, logger):
+        for user_namespace in UserNamespace.get_user_namespaces_for_user(self):
+            user_namespace.manage(logger=logger, user=self)
+        for user_namespace_config in list(UserNamespaceConfig.instances.values()):
+            user_namespace_config.check_autocreate_user_namespace(logger=logger, user=self)
+
 
 class UserNamespace:
     instances = {}
@@ -247,6 +251,25 @@ class UserNamespace:
                 return None
             else:
                 raise
+
+    @staticmethod
+    def get_user_namespaces_for_config(user_namespace_config):
+        return [
+            user_namespace for user_namespace in UserNamespace.instances.values() if user_namespace.config_name == user_namespace_config.name
+        ]
+
+    @staticmethod
+    def get_user_namespaces_for_user(user):
+        return [
+            user_namespace for user_namespace in UserNamespace.instances.values() if user_namespace.user_uid == user.uid
+        ]
+
+    @staticmethod
+    def preload():
+        for resource_object in custom_objects_api.list_cluster_custom_object(
+            operator_domain, operator_api_version, 'usernamespaces'
+        ).get('items', []):
+            UserNamespace.register_resource_object(resource_object)
 
     @staticmethod
     def register(name, spec, status, uid):
@@ -552,19 +575,20 @@ class UserNamespace:
         else:
             return None
 
-    def manage(self, logger):
-        try:
-            user = User.get(self.user_name)
-        except kubernetes.client.rest.ApiException as e:
-            if e.status == 404:
-                logger.info(
-                    "Propagating delete from User",
-                    extra = dict(user=self.user_reference)
-                )
-                self.delete(logger=logger)
-                return
-            else:
-                raise
+    def manage(self, logger, user=None):
+        if not user:
+            try:
+                user = User.get(self.user_name)
+            except kubernetes.client.rest.ApiException as e:
+                if e.status == 404:
+                    logger.info(
+                        "Propagating delete from User",
+                        extra = dict(user=self.user_reference)
+                    )
+                    self.delete(logger=logger)
+                    return
+                else:
+                    raise
 
         self.manage_namespace(logger=logger, user=user)
         self.manage_resources(logger=logger, user=user)
@@ -1003,6 +1027,10 @@ class UserNamespaceConfig:
         else:
             return user_namespaces
 
+    def manage_user_namespaces(self, logger):
+        for user_namespace in UserNamespace.get_user_namespaces_for_config(self):
+            user_namespace.manage(logger=logger)
+
 class UserNamespaceRoleBinding:
     def __init__(self, spec):
         self.spec = spec
@@ -1069,11 +1097,10 @@ def startup(logger, settings: kopf.OperatorSettings, **_):
     # Disable scanning for CustomResourceDefinitions updates
     settings.scanning.disabled = True
 
-    # Load all Group definitions
+    # Preload resources that are needed in memory at runtime
     Group.preload()
-
-    # Load all UserNamespaceConfig definitions
     UserNamespaceConfig.preload()
+    UserNamespace.preload()
 
     # Configure logging
     configure_kopf_logging()
@@ -1091,11 +1118,18 @@ def group_event(event, logger, **_):
     if not resource_object \
     or resource_object['kind'] != 'Group':
         return
-    
+
     if event['type'] == 'DELETED':
         Group.unregister(resource_object['metadata']['name'])
     else:
-        Group.register(resource_object)
+        group = Group.register(resource_object)
+        for user_name in group.users ^ group.prev_users:
+            try:
+                user = User.get(user_name)
+                user.manage(logger=logger)
+            except kubernetes.client.rest.ApiException as e:
+                if e.status != 404:
+                    raise
 
 
 @kopf.on.event('user.openshift.io', 'v1', 'users')
@@ -1111,8 +1145,7 @@ def user_event(event, logger, **_):
     if event['type'] == 'DELETED':
         user.handle_delete(logger=logger)
     else:
-        for user_namespace_config in list(UserNamespaceConfig.instances.values()):
-            user_namespace_config.check_autocreate_user_namespace(logger=logger, user=user)
+        user.manage(logger=logger)
 
 
 @kopf.on.create(operator_domain, operator_api_version, 'usernamespaces', id='usernamespace_create')
@@ -1121,6 +1154,7 @@ def user_event(event, logger, **_):
 def usernamespace_handler(logger, name, spec, status, uid, **_):
     user_namespace = UserNamespace.register(name=name, spec=spec, status=status, uid=uid)
     user_namespace.manage(logger=logger)
+
 
 @kopf.daemon(operator_domain, operator_api_version, 'usernamespaces', cancellation_timeout=1)
 async def usernamespace_daemon(logger, name, spec, status, stopped, uid, **_):
@@ -1141,6 +1175,7 @@ async def usernamespace_daemon(logger, name, spec, status, stopped, uid, **_):
 @kopf.on.update(operator_domain, operator_api_version, 'usernamespaceconfigs', id='usernamespaceconfig_update')
 def usernamespaceconfig_handler(logger, name, spec, status, uid, **_):
     user_namespace_config = UserNamespaceConfig.register(name=name, spec=spec, status=status, uid=uid)
+    user_namespace_config.manage_user_namespaces(logger=logger)
     user_namespace_config.check_autocreate_user_namespaces(logger=logger)
 
 @kopf.on.delete(operator_domain, operator_api_version, 'usernamespaceconfigs', id='usernamespaceconfig_create')

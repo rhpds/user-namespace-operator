@@ -54,7 +54,6 @@
           enable: true
           prefix: test-role-bindings-
           when: "'test-role-bindings' in group_names"
-        managementIntervalSeconds: 5
         roleBindings:
         - roleName: admin
 
@@ -198,7 +197,6 @@
           enable: true
           prefix: test-role-bindings-
           when: "'test-role-bindings' in group_names"
-        managementIntervalSeconds: 5
         roleBindings:
         - roleName: edit
 
@@ -248,7 +246,6 @@
           enable: true
           prefix: test-role-bindings-
           when: "'test-role-bindings' in group_names"
-        managementIntervalSeconds: 5
         roleBindings:
         - roleName: edit
           when: "'test-role-bindings-edit' in group_names"
