@@ -15,19 +15,20 @@ https://docs.openshift.com/container-platform/latest/cli_reference/developer_cli
 
 . Create resources required for development from helm chart:
 +
---------------------------------------------------
+-----------------------------------------------
 helm template helm/ \
 --include-crds \
 --set deploy=false \
---set namespace.name=user-namespace-operator-dev \
+--set namespace.name=user-namespace-operator \
+--set defaultUserNamespaceConfig.create=false \
 | oc apply -f -
---------------------------------------------------
+-----------------------------------------------
 
-. Change project namespace to `user-namespace-operator-dev`:
+. Change project namespace to `user-namespace-operator`:
 +
--------------------------------------------
-odo project set user-namespace-operator-dev
--------------------------------------------
+---------------------------------------
+odo project set user-namespace-operator
+---------------------------------------
 
 . Grant privileges for cluster role `user-namespace-operator` to default service account:
 +
@@ -50,7 +51,11 @@ If you are developing with a different operator domain then you will need to upd
 odo push
 --------
 
-. Run manual tests...
+. Run tests:
++
+-----------------------------------
+ansible-playbook test/playbook.yaml
+-----------------------------------
 
 . Cleanup
 +
@@ -70,12 +75,6 @@ helm template helm/ \
 | oc delete -f -
 --------------------------------------------------
 
-
-
-
-
-
-
 ## Development OpenShift Build
 
 The OpenShift build process is a bit slower for development but has the advantage of being a bit closer to a normal deployment of poolboy.
@@ -83,9 +82,9 @@ It is often best to iterate development using `odo` and also test with an OpenSh
 
 . Create a project for development using `oc`:
 +
---------------------------
-oc new-project user-namespace-operator-dev
---------------------------
+--------------------------------------
+oc new-project user-namespace-operator
+--------------------------------------
 
 . Process OpenShift build template to create BuildConfig and ImageStream:
 +
@@ -105,13 +104,17 @@ oc start-build user-namespace-operator --from-dir=. --follow
 helm template helm \
 --include-crds \
 --set namespace.create=false \
---set namespace.name=user-namespace-operator-dev \
+--set namespace.name=user-namespace-operator \
 --set=image.tagOverride=- \
 --set=image.repository=$(oc get imagestream user-namespace-operator -o jsonpath='{.status.tags[?(@.tag=="latest")].items[0].dockerImageReference}') \
 | oc apply -f -
 --------------------------------------------------------------------------------
 
-. Run manual tests...
+. Run tests:
++
+-----------------------------------
+ansible-playbook test/playbook.yaml
+-----------------------------------
 
 . Cleanup
 +
@@ -120,7 +123,7 @@ Remove resources created from the helm template:
 ---------------------------------------------
 helm template helm \
 --set namespace.create=false \
---set namespace.name=user-namespace-operator-dev \
+--set namespace.name=user-namespace-operator \
 | oc delete -f -
 ---------------------------------------------
 +

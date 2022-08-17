@@ -1,0 +1,66 @@
+---
+- name: Remove test UserNamespaceConfigs
+  kubernetes.core.k8s:
+    api_version: usernamespace.gpte.redhat.com/v1
+    kind: UserNamespaceConfig
+    name: "{{ item }}"
+    state: absent
+  loop:
+  - test-role-bindings
+
+- name: List UserNamespaces for test-role-bindings
+  kubernetes.core.k8s_info:
+    api_version: usernamespace.gpte.redhat.com/v1
+    kind: UserNamespace
+    label_selectors:
+    - usernamespace.gpte.redhat.com/config=test-role-bindings
+  register: r_list_test_usernamespaces
+
+- name: Delete UserNamespaces for test-role-bindings
+  kubernetes.core.k8s:
+    api_version: usernamespace.gpte.redhat.com/v1
+    kind: UserNamespace
+    name: "{{ item.metadata.name }}"
+  loop: "{{ r_list_test_usernamespaces.resources }}"
+  loop_control:
+    label: "{{ item.metadata.name }}"
+
+- name: Remove test Group
+  kubernetes.core.k8s:
+    api_version: user.openshift.io/v1
+    kind: Group
+    name: "{{ item }}"
+    state: absent
+  loop:
+  - test-role-bindings
+  - test-role-bindings-edit
+
+- name: Remove test Users
+  kubernetes.core.k8s:
+    api_version: user.openshift.io/v1
+    kind: User
+    name: "{{ item }}"
+    state: absent
+  loop:
+  - test-alice
+  - test-bob
+
+- name: Remove test Identities
+  kubernetes.core.k8s:
+    api_version: user.openshift.io/v1
+    kind: Identity
+    name: "{{ item }}"
+    state: absent
+  loop:
+  - user-namespace-operator-test:test-alice
+  - user-namespace-operator-test:test-bob
+
+- name: Remove test Namespaces
+  kubernetes.core.k8s:
+    api_version: v1
+    kind: Namespace
+    name: "{{ item }}"
+    state: absent
+  loop:
+  - test-role-bindings-test-alice
+  - test-role-bindings-test-bob

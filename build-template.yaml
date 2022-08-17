@@ -10,7 +10,7 @@ parameters:
 - name: KOPF_S2I_IMAGE
   value: quay.io/redhat-cop/python-kopf-s2i:v1.35
 - name: GIT_REPO
-  value: https://github.com/redhat-gpte/user-namespace-operator.git
+  value: https://github.com/rhpds/user-namespace-operator.git
 - name: NAME
   value: user-namespace-operator
 

@@ -69,18 +69,48 @@ spec:
                       Prefix to add to sanitized username to make namespace name.
                       Default is "user-".
                     type: string
+                  when:
+                    description: >-
+                      Condition to check to determine if autocreate should occur.
+                    type: string
+              managementIntervalSeconds:
+                description: >-
+                  Interval between namespace and resource management operations.
+                  Default 10 minutes, 600 seconds.
+                type: integer
+                minimum: 1
+              roleBindings:
+                description: >-
+                  List of RoleBindings for the user in the namespace.
+                type: array
+                items:
+                  type: object
+                  required:
+                  - roleName
+                  properties:
+                    roleName:
+                      description: >-
+                        ClusterRole name.
+                      type: string
+                    when:
+                      description: >-
+                        Condition to check to determine if RoleBinding should be created.
+                      type: string
               templates:
                 description: >-
-                  List of templates to apply to initiate namespace.
+                  List of templates to apply to configure resources in the namespace.
                 type: array
                 items:
                   description: >-
-                    Template to process to initialize the user namespace.
-                    Template must support parameters PROJECT_NAME and PROJECT_ADMIN_USER.
+                    Template to process to generate resource definitions for the namespace.
+                    OpenShift templates must support parameters PROJECT_NAME and PROJECT_ADMIN_USER.
                   type: object
-                  required:
-                  - name
                   properties:
+                    content:
+                      description: >-
+                        Template content to render as determined by template type.
+                        Template variables include "namespace", "user_name", and "user_groups".
+                      type: string
                     name:
                       description: Template name.
                       type: string
@@ -88,6 +118,16 @@ spec:
                       description: >-
                         Optional template namespace if template is not in the operator namespace.
                       type: string
+                    type:
+                      type: string
+                      description: >-
+                        Type of template.
+                        If openshift then name must be set and namespace may optionally specify the namespace.
+                        If jinja2 then content must be set.
+                      default: openshift
+                      enum:
+                      - jinja2
+                      - openshift
           status:
             type: object
             x-kubernetes-preserve-unknown-fields: true
