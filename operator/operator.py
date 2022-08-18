@@ -184,20 +184,24 @@ class User:
             operator_domain, operator_api_version, 'usernamespaces',
             label_selector=f"{operator_domain}/user-uid={self.uid}"
         ).get('items', []):
-            name = user_namespace['metadata']['name']
+            user_namespace_name = user_namespace['metadata']['name']
             logger.info(
                 "Propagating User deletion to UserNamespace",
                 extra = dict(
                     UserNamespace = dict(
                         apiVersion = operator_api_version,
                         kind = 'UserNamespace',
-                        name = name,
+                        name = user_namespace_name,
                     )
                 )
             )
-            custom_objects_api.delete_cluster_custom_object(
-                operator_domain, operator_api_version, 'usernamespaces', name
-            )
+            try:
+                custom_objects_api.delete_cluster_custom_object(
+                    operator_domain, operator_api_version, 'usernamespaces', user_namespace_name
+                )
+            except kubernetes.client.rest.ApiException as e:
+                if e.status != 404:
+                    raise
 
     def manage(self, logger):
         for user_namespace in UserNamespace.get_user_namespaces_for_user(self):
