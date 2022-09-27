@@ -1,0 +1,144 @@
+---
+- name: Create test-claim-existing UserNamespaceConfig
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: usernamespace.gpte.redhat.com/v1
+      kind: UserNamespaceConfig
+      metadata:
+        name: test-claim-existing
+      spec:
+        autocreate:
+          description: This namespace was created to test claiming existing namespace for {user_name}.
+          displayName: Test role bindings namespace for {user_name}
+          enable: true
+          prefix: test-claim-existing-
+          when: "'test-claim-existing' in group_names"
+        roleBindings:
+        - roleName: admin
+
+- name: Create group test-claim-existing
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: user.openshift.io/v1
+      kind: Group
+      metadata:
+        name: test-claim-existing
+      users:
+      - test-alice
+      - test-bob
+
+- name: Create namespace test-claim-existing-test-alice
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        annotations:
+          openshift.io/requester: test-alice
+        name: test-claim-existing-test-alice
+
+- name: Create user test-alice
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: user.openshift.io/v1
+      kind: User
+      metadata:
+        name: test-alice
+      identities:
+      - user-namespace-operator-test:test-alice
+  register: r_create_user
+
+- name: Set test_alice_uid
+  set_fact:
+    test_alice_uid: "{{ r_create_user.result.metadata.uid }}"
+
+- name: Create Identity user-namespace-operator-test:test-alice
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: user.openshift.io/v1
+      kind: Identity
+      metadata:
+        name: user-namespace-operator-test:test-alice
+      extra:
+        email: test-alice@example.com
+      providerName: user-namespace-operator-test
+      providerUserName: test-alice
+      user:
+        name: test-alice
+        uid: "{{ test_alice_uid }}"
+
+- name: Verify test-claim-existing-test-alice UserNamespace created
+  kubernetes.core.k8s_info:
+    api_version: usernamespace.gpte.redhat.com/v1
+    kind: UserNamespace
+    name: test-claim-existing-test-alice
+  register: r_verify_user_namespace
+  failed_when: >-
+    r_verify_user_namespace.resources | length != 1
+  until: r_verify_user_namespace is success
+  retries: 30
+  delay: 2
+
+- name: Create namespace test-claim-existing-test-bob
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        annotations:
+          openshift.io/requester: test-NOT-bob
+        name: test-claim-existing-test-bob
+
+- name: Create user test-bob
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: user.openshift.io/v1
+      kind: User
+      metadata:
+        name: test-bob
+      identities:
+      - user-namespace-operator-test:test-bob
+  register: r_create_user
+
+- name: Set test_bob_uid
+  set_fact:
+    test_bob_uid: "{{ r_create_user.result.metadata.uid }}"
+
+- name: Create Identity user-namespace-operator-test:test-bob
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: user.openshift.io/v1
+      kind: Identity
+      metadata:
+        name: user-namespace-operator-test:test-bob
+      extra:
+        email: test-bob@example.com
+      providerName: user-namespace-operator-test
+      providerUserName: test-bob
+      user:
+        name: test-bob
+        uid: "{{ test_bob_uid }}"
+
+- name: Verify test-claim-existing-test-bob UserNamespace NOT created
+  kubernetes.core.k8s_info:
+    api_version: usernamespace.gpte.redhat.com/v1
+    kind: UserNamespace
+    name: test-claim-existing-test-bob
+  register: r_verify_user_namespace
+  failed_when: >-
+    r_verify_user_namespace.resources | length != 0
+  until: r_verify_user_namespace is success
+  retries: 30
+  delay: 2
+
+- name: Verify test-claim-existing-test-bob-1 UserNamespace created
+  kubernetes.core.k8s_info:
+    api_version: usernamespace.gpte.redhat.com/v1
+    kind: UserNamespace
+    name: test-claim-existing-test-bob-1
+  register: r_verify_user_namespace
+  failed_when: >-
+    r_verify_user_namespace.resources | length != 1
+  until: r_verify_user_namespace is success
+  retries: 30
+  delay: 2

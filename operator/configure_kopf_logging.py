@@ -2,6 +2,8 @@ import logging
 
 def suppress_handler_succeeded_messages(record: logging.LogRecord) -> bool:
     txt = record.getMessage()
+    if txt.startswith("Daemon ") and txt.endswith(" succeeded."):
+        return False
     if txt.startswith("Handler ") and txt.endswith(" succeeded."):
         return False
     return True

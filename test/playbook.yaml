@@ -6,6 +6,7 @@
     tests:
     - templates
     - role_bindings
+    - claim_existing
   tasks:
   - name: Cleanup to reset before Running tests
     include_role:
