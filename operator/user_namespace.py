@@ -91,13 +91,20 @@ class UserNamespace:
 
     @staticmethod
     async def preload():
-        user_namespaces_list = await custom_objects_api.list_cluster_custom_object(
-            group = operator_domain,
-            plural = 'usernamespaces',
-            version = operator_version,
-        )
-        for definition in user_namespaces_list.get('items', []):
-            await UserNamespace.register_definition(definition)
+        _continue = None
+        while True:
+            user_namespace_list = await custom_objects_api.list_cluster_custom_object(
+                group = operator_domain,
+                plural = 'usernamespaces',
+                version = operator_version,
+                _continue = _continue,
+                limit = 50,
+            )
+            for definition in user_namespace_list.get('items', []):
+                await UserNamespace.register_definition(definition)
+            _continue = user_namespace_list['metadata'].get('continue')
+            if not _continue:
+                break
 
     @staticmethod
     async def register(name, spec, status, uid):
@@ -204,7 +211,7 @@ class UserNamespace:
 
     @property
     def config_name(self):
-        return self.spec.get('config', {}).get('name')
+        return self.spec.get('config', {}).get('name', 'default')
 
     @property
     def description(self):

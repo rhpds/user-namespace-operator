@@ -207,27 +207,27 @@ class UserNamespaceConfig:
             await self.check_autocreate_user_namespace_with_lock(logger=logger, user=user)
 
     async def check_autocreate_user_namespace_with_lock(self, logger, user):
-            if not self.autocreate_enable:
+        if not self.autocreate_enable:
+            return False
+        if self.autocreate_when:
+            groups = group_module.Group.get_groups_with_user(user.name)
+            group_names = [group.name for group in groups]
+            if not check_condition(
+                self.autocreate_when,
+                dict(
+                    groups = groups,
+                    group_names = group_names,
+                    user = user,
+                )
+            ):
                 return False
-            if self.autocreate_when:
-                groups = group_module.Group.get_groups_with_user(user.name)
-                group_names = [group.name for group in groups]
-                if not check_condition(
-                    self.autocreate_when,
-                    dict(
-                        groups = groups,
-                        group_names = group_names,
-                        user = user,
-                    )
-                ):
-                    return False
 
-            user_namespaces = user_namespace_module.UserNamespace.get_user_namespaces_for_config_and_user(
-                user = user,
-                user_namespace_config = self,
-            )
-            if not user_namespaces:
-                await self.autocreate_user_namespace(logger=logger, user=user)
+        user_namespaces = user_namespace_module.UserNamespace.get_user_namespaces_for_config_and_user(
+            user = user,
+            user_namespace_config = self,
+        )
+        if not user_namespaces:
+            await self.autocreate_user_namespace(logger=logger, user=user)
 
     async def check_autocreate_user_namespaces(self, logger):
         """
@@ -240,7 +240,9 @@ class UserNamespaceConfig:
         while True:
             try:
                 user_list = await custom_objects_api.list_cluster_custom_object(
-                    'user.openshift.io', 'v1', 'users',
+                    group = 'user.openshift.io',
+                    plural = 'users',
+                    version = 'v1',
                     _continue = _continue,
                     limit = 50,
                 )
