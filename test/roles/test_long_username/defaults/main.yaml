@@ -1,0 +1,6 @@
+---
+alice_0: test-alice-01234567890123456789012345678901234567890123456780123456789-0
+alice_1: test-alice-01234567890123456789012345678901234567890123456780123456789-1
+
+alice_0_namespace: test-long-username-{{ alice_0[:44] }}
+alice_1_namespace: test-long-username-{{ alice_0[:42] }}-1
