@@ -1,6 +1,8 @@
 import asyncio
 import kubernetes_asyncio
 
+from math import floor, log
+
 from check_condition import check_condition
 from config import custom_objects_api, operator_api_version, operator_domain, operator_namespace, operator_version
 
@@ -184,7 +186,8 @@ class UserNamespaceConfig:
         will be obviously different from other UserNamespace resources.
         """
         user_namespace_basename = self.autocreate_prefix + user.sanitized_name
-        user_namespace_name = user_namespace_basename
+        # Name truncated at k8s namespace length limit
+        user_namespace_name = user_namespace_basename[:63]
         i = 0
         while True:
             user_namespace = await user_namespace_module.UserNamespace.try_create(
@@ -196,7 +199,8 @@ class UserNamespaceConfig:
             if user_namespace:
                 return user_namespace
             i += 1
-            user_namespace_name = f"{user_namespace_basename}-{i}"
+            # Name truncated at k8s namespace length limit with numeric extension
+            user_namespace_name = f"{user_namespace_basename[:61 - floor(log(i, 10))]}-{i}"
 
     async def check_autocreate_user_namespace(self, logger, user):
         """

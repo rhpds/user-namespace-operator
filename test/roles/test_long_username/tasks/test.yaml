@@ -1,0 +1,217 @@
+---
+- name: Create user {{ alice_0 }}
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: user.openshift.io/v1
+      kind: User
+      metadata:
+        name: "{{ alice_0 }}"
+      identities:
+      - user-namespace-operator-test:{{ alice_0 }}
+  register: r_create_user
+
+- name: Set alice_0_uid
+  set_fact:
+    alice_0_uid: "{{ r_create_user.result.metadata.uid }}"
+
+- name: Create Identity user-namespace-operator-test:test-alice
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: user.openshift.io/v1
+      kind: Identity
+      metadata:
+        name: user-namespace-operator-test:{{ alice_0 }}
+      extra:
+        email: "{{ alice_0 }}@example.com"
+      providerName: user-namespace-operator-test
+      providerUserName: "{{ alice_0 }}"
+      user:
+        name: test-alice
+        uid: "{{ alice_0_uid }}"
+
+- name: Create group test-long-username
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: user.openshift.io/v1
+      kind: Group
+      metadata:
+        name: test-long-username
+      users:
+      - "{{ alice_0 }}"
+      - "{{ alice_1 }}"
+
+- name: Create test-long-username UserNamespaceConfig
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: usernamespace.gpte.redhat.com/v1
+      kind: UserNamespaceConfig
+      metadata:
+        name: test-long-username
+      spec:
+        autocreate:
+          description: This namespace was created to test {user_name}
+          displayName: Test long username namespace for {user_name}
+          enable: true
+          prefix: test-long-username-
+          when: "'test-long-username' in group_names"
+        roleBindings:
+        - roleName: admin
+
+- name: Verify test-long-username namespace for {{ alice_0 }}
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Namespace
+    name: "{{ alice_0_namespace }}"
+  register: r_verify_namespace
+  failed_when: >-
+    r_verify_namespace.resources | length != 1 or
+    r_verify_namespace.resources[0].metadata.name != alice_0_namespace or
+    r_verify_namespace.resources[0].metadata.annotations['openshift.io/description'] != 'This namespace was created to test ' ~ alice_0 or
+    r_verify_namespace.resources[0].metadata.annotations['openshift.io/display-name'] != 'Test long username namespace for ' ~ alice_0 or
+    r_verify_namespace.resources[0].metadata.labels['usernamespace.gpte.redhat.com/user-uid'] != alice_0_uid
+  until: r_verify_namespace is success
+  retries: 30
+  delay: 2
+
+- name: Verify test-long-username admin rolebinding for {{ alice_0 }}
+  kubernetes.core.k8s_info:
+    api_version: rbac.authorization.k8s.io/v1
+    kind: RoleBinding
+    name: admin:{{ alice_0 }}
+    namespace: "{{ alice_0_namespace }}"
+  register: r_verify_rolebinding
+  failed_when: >-
+    r_verify_rolebinding.resources | length != 1 or
+    r_verify_rolebinding.resources[0].roleRef.apiGroup != 'rbac.authorization.k8s.io' or
+    r_verify_rolebinding.resources[0].roleRef.kind != 'ClusterRole' or
+    r_verify_rolebinding.resources[0].roleRef.name != 'admin' or
+    r_verify_rolebinding.resources[0].subjects | length != 1 or
+    r_verify_rolebinding.resources[0].subjects[0].kind != 'User' or
+    r_verify_rolebinding.resources[0].subjects[0].name != alice_0
+  until: r_verify_rolebinding is success
+  retries: 30
+  delay: 2
+
+- name: Create user {{ alice_1 }}
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: user.openshift.io/v1
+      kind: User
+      metadata:
+        name: "{{ alice_1 }}"
+      identities:
+      - user-namespace-operator-test:{{ alice_1 }}
+  register: r_create_user
+
+- name: Set alice_1_uid
+  set_fact:
+    alice_1_uid: "{{ r_create_user.result.metadata.uid }}"
+
+- name: Create Identity user-namespace-operator-test:test-alice
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: user.openshift.io/v1
+      kind: Identity
+      metadata:
+        name: user-namespace-operator-test:{{ alice_1 }}
+      extra:
+        email: "{{ alice_1 }}@example.com"
+      providerName: user-namespace-operator-test
+      providerUserName: "{{ alice_1 }}"
+      user:
+        name: test-alice
+        uid: "{{ alice_1_uid }}"
+
+- name: Verify test-long-username namespace for {{ alice_1 }}
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Namespace
+    name: "{{ alice_1_namespace }}"
+  register: r_verify_namespace
+  failed_when: >-
+    r_verify_namespace.resources | length != 1 or
+    r_verify_namespace.resources[0].metadata.name != alice_1_namespace or
+    r_verify_namespace.resources[0].metadata.annotations['openshift.io/description'] != 'This namespace was created to test ' ~ alice_1 or
+    r_verify_namespace.resources[0].metadata.annotations['openshift.io/display-name'] != 'Test long username namespace for ' ~ alice_1 or
+    r_verify_namespace.resources[0].metadata.labels['usernamespace.gpte.redhat.com/user-uid'] != alice_1_uid
+  until: r_verify_namespace is success
+  retries: 30
+  delay: 2
+
+- name: Verify test-long-username admin rolebinding for {{ alice_1 }}
+  kubernetes.core.k8s_info:
+    api_version: rbac.authorization.k8s.io/v1
+    kind: RoleBinding
+    name: admin:{{ alice_1 }}
+    namespace: "{{ alice_1_namespace }}"
+  register: r_verify_rolebinding
+  failed_when: >-
+    r_verify_rolebinding.resources | length != 1 or
+    r_verify_rolebinding.resources[0].roleRef.apiGroup != 'rbac.authorization.k8s.io' or
+    r_verify_rolebinding.resources[0].roleRef.kind != 'ClusterRole' or
+    r_verify_rolebinding.resources[0].roleRef.name != 'admin' or
+    r_verify_rolebinding.resources[0].subjects | length != 1 or
+    r_verify_rolebinding.resources[0].subjects[0].kind != 'User' or
+    r_verify_rolebinding.resources[0].subjects[0].name != alice_1
+  until: r_verify_rolebinding is success
+  retries: 30
+  delay: 2
+
+- name: Delete user {{ alice_0 }}
+  kubernetes.core.k8s:
+    api_version: user.openshift.io/v1
+    kind: User
+    name: "{{ alice_0 }}"
+    state: absent
+
+- name: Delete Identity user-namespace-operator-test:{{ alice_0 }}
+  kubernetes.core.k8s:
+    api_version: user.openshift.io/v1
+    kind: Identity
+    name: user-namespace-operator-test:{{ alice_0 }}
+    state: absent
+
+- name: Verify {{ alice_0_namespace }} namespace deleted
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Namespace
+    name: "{{ alice_0_namespace }}"
+  register: r_verify_namespace
+  failed_when: >-
+    r_verify_namespace.resources | length != 0
+  until: r_verify_namespace is success
+  retries: 30
+  delay: 2
+
+- name: Delete user {{ alice_1 }}
+  kubernetes.core.k8s:
+    api_version: user.openshift.io/v1
+    kind: User
+    name: "{{ alice_1 }}"
+    state: absent
+
+- name: Delete Identity user-namespace-operator-test:{{ alice_1 }}
+  kubernetes.core.k8s:
+    api_version: user.openshift.io/v1
+    kind: Identity
+    name: user-namespace-operator-test:{{ alice_1 }}
+    state: absent
+
+- name: Verify {{ alice_1_namespace }} namespace deleted
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Namespace
+    name: "{{ alice_1_namespace }}"
+  register: r_verify_namespace
+  failed_when: >-
+    r_verify_namespace.resources | length != 0
+  until: r_verify_namespace is success
+  retries: 30
+  delay: 2
+
+- name: Remove test-long-username UserNamespaceConfig
+  kubernetes.core.k8s:
+    api_version: usernamespace.gpte.redhat.com/v1
+    kind: UserNamespaceConfig
+    name: test-long-username
+    state: absent
