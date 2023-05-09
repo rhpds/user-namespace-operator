@@ -106,7 +106,7 @@ spec:
                 type: array
                 items:
                   type: object
-                  requeired:
+                  required:
                   - apiVersion
                   - kind
                   - name
