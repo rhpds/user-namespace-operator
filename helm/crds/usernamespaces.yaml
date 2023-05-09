@@ -69,10 +69,10 @@ spec:
               description:
                 description: >-
                   Content for namespace "openshift.io/description" annotation.
-                displayName: >-
-                  Content for namespace "openshift.io/display-name" annotation.
                 type: string
               displayName:
+                description: >-
+                  Content for namespace "openshift.io/display-name" annotation.
                 type: string
               user:
                 description: >-
