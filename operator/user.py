@@ -1,4 +1,5 @@
 import asyncio
+import kubernetes_asyncio
 import re
 
 from config import (
