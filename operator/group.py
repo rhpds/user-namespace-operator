@@ -1,6 +1,6 @@
 import asyncio
 
-from config import custom_objects_api
+from usernamespaceoperator import UserNamespaceOperator
 
 class Group:
     instances = {}
@@ -14,7 +14,7 @@ class Group:
 
     @staticmethod
     async def preload():
-        groups_list = await custom_objects_api.list_cluster_custom_object(
+        groups_list = await UserNamespaceOperator.custom_objects_api.list_cluster_custom_object(
             group = 'user.openshift.io',
             plural = 'groups',
             version = 'v1',

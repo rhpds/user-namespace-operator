@@ -10,27 +10,14 @@ import os
 import re
 import time
 
-from config import (
-    authorization_v1_api,
-    check_interval,
-    core_v1_api,
-    custom_objects_api,
-    operator_api_version,
-    operator_cluster_admin,
-    operator_domain,
-    operator_namespace,
-    operator_service_account_name,
-    operator_version,
-    rbac_authorization_v1_api,
-)
-
 from configure_kopf_logging import configure_kopf_logging
 from infinite_relative_backoff import InfiniteRelativeBackoff
 
 from group import Group
 from user import User
-from user_namespace import UserNamespace
-from user_namespace_config import UserNamespaceConfig
+from usernamespaceoperator import UserNamespaceOperator
+from usernamespace import UserNamespace
+from usernamespaceconfig import UserNamespaceConfig
 
 @kopf.on.startup()
 async def startup(logger, settings: kopf.OperatorSettings, **_):
@@ -41,7 +28,7 @@ async def startup(logger, settings: kopf.OperatorSettings, **_):
     settings.persistence.diffbase_storage = kopf.StatusDiffBaseStorage(field='status.diffBase')
 
     # Use operator domain as finalizer
-    settings.persistence.finalizer = operator_domain
+    settings.persistence.finalizer = UserNamespaceOperator.operator_domain
 
     # Store progress in status.
     settings.persistence.progress_storage = kopf.StatusProgressStorage(field='status.kopf.progress')
@@ -55,15 +42,17 @@ async def startup(logger, settings: kopf.OperatorSettings, **_):
     # Configure logging
     configure_kopf_logging()
 
-    if operator_cluster_admin:
-        logger.info("Running as cluster-admin")
-    else:
-        logger.info("Running without cluster-admin privileges")
+    await UserNamespaceOperator.startup(logger)
 
     # Preload resources that are needed in memory at runtime
     await Group.preload()
     await UserNamespaceConfig.preload()
     await UserNamespace.preload()
+
+
+@kopf.on.cleanup()
+async def cleanup(logger: kopf.ObjectLogger, **_):
+    await UserNamespaceOperator.cleanup()
 
 
 @kopf.on.event('user.openshift.io', 'v1', 'groups')
@@ -112,15 +101,15 @@ async def user_event(event, logger, **_):
         await user.manage(logger=logger)
 
 
-@kopf.on.create(operator_domain, operator_version, 'usernamespaces', id='usernamespace_create')
-@kopf.on.resume(operator_domain, operator_version, 'usernamespaces', id='usernamespace_resume')
-@kopf.on.update(operator_domain, operator_version, 'usernamespaces', id='usernamespace_update')
+@kopf.on.create(UserNamespaceOperator.operator_domain, UserNamespaceOperator.operator_version, 'usernamespaces', id='usernamespace_create')
+@kopf.on.resume(UserNamespaceOperator.operator_domain, UserNamespaceOperator.operator_version, 'usernamespaces', id='usernamespace_resume')
+@kopf.on.update(UserNamespaceOperator.operator_domain, UserNamespaceOperator.operator_version, 'usernamespaces', id='usernamespace_update')
 async def usernamespace_handler(logger, name, spec, status, uid, **_):
     user_namespace = await UserNamespace.register(name=name, spec=spec, status=status, uid=uid)
     await user_namespace.get_user_and_manage(logger=logger)
 
 
-@kopf.daemon(operator_domain, operator_version, 'usernamespaces', cancellation_timeout=1)
+@kopf.daemon(UserNamespaceOperator.operator_domain, UserNamespaceOperator.operator_version, 'usernamespaces', cancellation_timeout=1)
 async def usernamespace_daemon(logger, name, spec, status, stopped, uid, **_):
     '''
     Periodically manage resources for namespace check if UserNamespace should be deleted following User deletion.
@@ -135,18 +124,18 @@ async def usernamespace_daemon(logger, name, spec, status, stopped, uid, **_):
         pass
 
     
-@kopf.on.create(operator_domain, operator_version, 'usernamespaceconfigs', id='usernamespaceconfig_create')
-@kopf.on.update(operator_domain, operator_version, 'usernamespaceconfigs', id='usernamespaceconfig_update')
+@kopf.on.create(UserNamespaceOperator.operator_domain, UserNamespaceOperator.operator_version, 'usernamespaceconfigs', id='usernamespaceconfig_create')
+@kopf.on.update(UserNamespaceOperator.operator_domain, UserNamespaceOperator.operator_version, 'usernamespaceconfigs', id='usernamespaceconfig_update')
 async def usernamespaceconfig_handler(logger, name, spec, status, uid, **_):
     user_namespace_config = await UserNamespaceConfig.register(name=name, spec=spec, status=status, uid=uid)
     await user_namespace_config.manage_user_namespaces(logger=logger)
     await user_namespace_config.check_autocreate_user_namespaces(logger=logger)
 
-@kopf.on.delete(operator_domain, operator_version, 'usernamespaceconfigs')
+@kopf.on.delete(UserNamespaceOperator.operator_domain, UserNamespaceOperator.operator_version, 'usernamespaceconfigs')
 async def usernamespaceconfig_delete(logger, name, **_):
     await UserNamespaceConfig.unregister_config(name=name)
 
-@kopf.daemon(operator_domain, operator_version, 'usernamespaceconfigs', cancellation_timeout=1)
+@kopf.daemon(UserNamespaceOperator.operator_domain, UserNamespaceOperator.operator_version, 'usernamespaceconfigs', cancellation_timeout=1)
 async def usernamespaceconfig_daemon(logger, name, spec, status, stopped, uid, **_):
     user_namespace_config = await UserNamespaceConfig.register(name=name, spec=spec, status=status, uid=uid)
     try:

@@ -4,11 +4,11 @@ import kubernetes_asyncio
 from math import floor, log
 
 from check_condition import check_condition
-from config import custom_objects_api, operator_api_version, operator_domain, operator_namespace, operator_version
+from usernamespaceoperator import UserNamespaceOperator
 
-import group as group_module
+import usernamespace
+from group import Group
 import user as user_module
-import user_namespace as user_namespace_module
 
 class UserNamespaceRoleBinding:
     def __init__(self, spec):
@@ -26,7 +26,7 @@ class UserNamespaceRoleBinding:
         if not self.when:
             return True
 
-        groups = group_module.Group.get_groups_with_user(user.name)
+        groups = Group.get_groups_with_user(user.name)
         group_names = [group.name for group in groups]
 
         return check_condition(
@@ -48,7 +48,7 @@ class UserNamespaceTemplate:
 
     @property
     def namespace(self):
-        return self.spec.get('namespace', operator_namespace)
+        return self.spec.get('namespace', UserNamespaceOperator.operator_namespace)
 
     @property
     def parameters(self):
@@ -64,11 +64,11 @@ class UserNamespaceConfig:
             user_namespace_config = UserNamespaceConfig.instances.get(name)
             if user_namespace_config:
                 return user_namespace_config
-            definition = await custom_objects_api.get_cluster_custom_object(
-                group = operator_domain,
+            definition = await UserNamespaceOperator.custom_objects_api.get_cluster_custom_object(
+                group = UserNamespaceOperator.operator_domain,
                 name = name,
                 plural = 'usernamespaceconfigs',
-                version = operator_version,
+                version = UserNamespaceOperator.operator_version,
             )
             return UserNamespaceConfig.__register(definition=definition)
 
@@ -78,10 +78,10 @@ class UserNamespaceConfig:
 
     @staticmethod
     async def preload():
-        user_namespace_config_list = await custom_objects_api.list_cluster_custom_object(
-            group = operator_domain,
+        user_namespace_config_list = await UserNamespaceOperator.custom_objects_api.list_cluster_custom_object(
+            group = UserNamespaceOperator.operator_domain,
             plural = 'usernamespaceconfigs',
-            version = operator_version,
+            version = UserNamespaceOperator.operator_version,
         )
         for definition in user_namespace_config_list.get('items', []):
             await UserNamespaceConfig.register_definition(definition)
@@ -152,7 +152,7 @@ class UserNamespaceConfig:
     @property
     def reference(self):
         return dict(
-            apiVersion = operator_api_version,
+            apiVersion = UserNamespaceOperator.operator_api_version,
             kind = 'UserNamespaceConfig',
             name = self.name,
             uid = self.uid
@@ -190,7 +190,7 @@ class UserNamespaceConfig:
         user_namespace_name = user_namespace_basename[:63]
         i = 0
         while True:
-            user_namespace = await user_namespace_module.UserNamespace.try_create(
+            user_namespace = await usernamespace.UserNamespace.try_create(
                 logger = logger,
                 name = user_namespace_name,
                 user = user,
@@ -214,7 +214,7 @@ class UserNamespaceConfig:
         if not self.autocreate_enable:
             return False
         if self.autocreate_when:
-            groups = group_module.Group.get_groups_with_user(user.name)
+            groups = Group.get_groups_with_user(user.name)
             group_names = [group.name for group in groups]
             if not check_condition(
                 self.autocreate_when,
@@ -226,7 +226,7 @@ class UserNamespaceConfig:
             ):
                 return False
 
-        user_namespaces = user_namespace_module.UserNamespace.get_user_namespaces_for_config_and_user(
+        user_namespaces = usernamespace.UserNamespace.get_user_namespaces_for_config_and_user(
             user = user,
             user_namespace_config = self,
         )
@@ -243,7 +243,7 @@ class UserNamespaceConfig:
         last_processed_user_name = None
         while True:
             try:
-                user_list = await custom_objects_api.list_cluster_custom_object(
+                user_list = await UserNamespaceOperator.custom_objects_api.list_cluster_custom_object(
                     group = 'user.openshift.io',
                     plural = 'users',
                     version = 'v1',
@@ -269,7 +269,7 @@ class UserNamespaceConfig:
                     raise
 
     async def manage_user_namespaces(self, logger):
-        for user_namespace in user_namespace_module.UserNamespace.get_user_namespaces_for_config(self):
+        for user_namespace in usernamespace.UserNamespace.get_user_namespaces_for_config(self):
             await user_namespace.get_user_and_manage(logger=logger)
 
     def refresh(self, spec, status, uid, **_):
