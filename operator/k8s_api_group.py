@@ -2,7 +2,7 @@
 
 import kubernetes_asyncio
 
-from config import custom_objects_api
+from usernamespaceoperator import UserNamespaceOperator
 
 class K8sApiGroup:
     instances = {}
@@ -11,7 +11,7 @@ class K8sApiGroup:
     async def get(api_group_version):
         if api_group_version in K8sApiGroup.instances:
             return K8sApiGroup.instances.get(api_group_version)
-        resp = await custom_objects_api.api_client.call_api(
+        resp = await UserNamespaceOperator.custom_objects_api.api_client.call_api(
             method = 'GET',
             resource_path = f"/apis/{api_group_version}",
             auth_settings=['BearerToken'],

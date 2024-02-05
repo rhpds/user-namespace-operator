@@ -1,20 +1,10 @@
 import asyncio
 import kubernetes_asyncio
 
-from config import (
-    core_v1_api,
-    custom_objects_api,
-    operator_api_version,
-    operator_cluster_admin,
-    operator_service_account_name,
-    operator_domain,
-    operator_namespace,
-    operator_version,
-    rbac_authorization_v1_api,
-)
+from usernamespaceoperator import UserNamespaceOperator
 
 import user as user_module
-import user_namespace_config as user_namespace_config_module
+import usernamespaceconfig
 
 from k8s_api_group import K8sApiGroup
 
@@ -24,18 +14,18 @@ class UserNamespace:
 
     @staticmethod
     async def create(name, user, user_namespace_config):
-        definition = await custom_objects_api.create_cluster_custom_object(
-            group = operator_domain,
+        definition = await UserNamespaceOperator.custom_objects_api.create_cluster_custom_object(
+            group = UserNamespaceOperator.operator_domain,
             plural = 'usernamespaces',
-            version = operator_version,
+            version = UserNamespaceOperator.operator_version,
             body = {
-                'apiVersion': operator_api_version,
+                'apiVersion': UserNamespaceOperator.operator_api_version,
                 'kind': 'UserNamespace',
                 'metadata': {
                     'name': name,
                     'labels': {
-                        operator_domain + '/config': user_namespace_config.name,
-                        operator_domain + '/user-uid': user.uid,
+                        UserNamespaceOperator.operator_domain + '/config': user_namespace_config.name,
+                        UserNamespaceOperator.operator_domain + '/user-uid': user.uid,
                     },
                     'ownerReferences': [dict(
                         controller = True,
@@ -58,8 +48,8 @@ class UserNamespace:
             if name in UserNamespace.instances:
                 return UserNamespace.instances[name]
             try:
-                definition = await custom_objects_api.get_cluster_custom_object(
-                    operator_domain, operator_version, 'usernamespaces', name
+                definition = await UserNamespaceOperator.custom_objects_api.get_cluster_custom_object(
+                    UserNamespaceOperator.operator_domain, UserNamespaceOperator.operator_version, 'usernamespaces', name
                 )
                 return UserNamespace.register_definition(definition)
             except kubernetes_asyncio.client.exceptions.ApiException as e:
@@ -93,10 +83,10 @@ class UserNamespace:
     async def preload():
         _continue = None
         while True:
-            user_namespace_list = await custom_objects_api.list_cluster_custom_object(
-                group = operator_domain,
+            user_namespace_list = await UserNamespaceOperator.custom_objects_api.list_cluster_custom_object(
+                group = UserNamespaceOperator.operator_domain,
                 plural = 'usernamespaces',
-                version = operator_version,
+                version = UserNamespaceOperator.operator_version,
                 _continue = _continue,
                 limit = 50,
             )
@@ -135,7 +125,7 @@ class UserNamespace:
         # Get namespace, waiting for namespace deletion to complete if already initiated 
         try:
             while True:
-                namespace = await core_v1_api.read_namespace(name)
+                namespace = await UserNamespaceOperator.core_v1_api.read_namespace(name)
                 if namespace.metadata.deletion_timestamp:
                     logger.info(f"Waiting for deletion of namespace {name} to complete")
                     await asyncio.sleep(2)
@@ -157,9 +147,9 @@ class UserNamespace:
             return None
 
         # Check user-namespace-operator has admin access to existing namespace
-        if namespace and not operator_cluster_admin:
+        if namespace and not UserNamespaceOperator.operator_cluster_admin:
             try:
-                admin_role_binding = await rbac_authorization_v1_api.read_namespaced_role_binding(
+                admin_role_binding = await UserNamespaceOperator.rbac_authorization_v1_api.read_namespaced_role_binding(
                     name = 'admin',
                     namespace = namespace.metadata.name
                 )
@@ -167,13 +157,13 @@ class UserNamespace:
                     return
                 # Check the subject for the admin rolebinding
                 if admin_role_binding.subjects[0].kind == 'ServiceAccount':
-                    if admin_role_binding.subjects[0].name != operator_service_account_name \
-                    or admin_role_binding.subjects[0].namespace != operator_namespace:
+                    if admin_role_binding.subjects[0].name != UserNamespaceOperator.operator_service_account_name \
+                    or admin_role_binding.subjects[0].namespace != UserNamespaceOperator.operator_namespace:
                         return
                 # Odd bug? When a service account creates a project request the namespace creates an
                 # admin rolebinding with kind "User"
                 if admin_role_binding.subjects[0].kind == 'User':
-                    if admin_role_binding.subjects[0].name != f"system:serviceaccount:{operator_namespace}:{operator_service_account_name}":
+                    if admin_role_binding.subjects[0].name != f"system:serviceaccount:{UserNamespaceOperator.operator_namespace}:{UserNamespaceOperator.operator_service_account_name}":
                         return
             except kubernetes_asyncio.client.exceptions.ApiException as e:
                 if e.status == 404 or e.status == 403:
@@ -228,7 +218,7 @@ class UserNamespace:
     @property
     def reference(self):
         return dict(
-            apiVersion = operator_api_version,
+            apiVersion = UserNamespaceOperator.operator_api_version,
             kind = 'UserNamespace',
             name = self.name,
             uid = self.uid,
@@ -285,12 +275,12 @@ class UserNamespace:
         if not namespace.metadata.labels:
             logger.info('setting namespace user-uid label')
             namespace.metadata.labels = {
-                operator_domain + '/user-uid': user.uid
+                UserNamespaceOperator.operator_domain + '/user-uid': user.uid
             }
             updated = True
-        elif user.uid != namespace.metadata.labels.get(operator_domain + '/user-uid', ''):
+        elif user.uid != namespace.metadata.labels.get(UserNamespaceOperator.operator_domain + '/user-uid', ''):
             logger.info('setting namespace user-uid label')
-            namespace.metadata.labels[operator_domain + '/user-uid'] = user.uid
+            namespace.metadata.labels[UserNamespaceOperator.operator_domain + '/user-uid'] = user.uid
             updated = True
 
         if not namespace.metadata.owner_references:
@@ -302,11 +292,11 @@ class UserNamespace:
             updated = True
 
         if updated:
-            await core_v1_api.replace_namespace(namespace_name, namespace)
+            await UserNamespaceOperator.core_v1_api.replace_namespace(namespace_name, namespace)
 
     async def create_namespace(self, logger, user):
-        if operator_cluster_admin:
-            await core_v1_api.create_namespace(
+        if UserNamespaceOperator.operator_cluster_admin:
+            await UserNamespaceOperator.core_v1_api.create_namespace(
                 kubernetes_asyncio.client.V1Namespace(
                     metadata = kubernetes_asyncio.client.V1ObjectMeta(
                         annotations = {
@@ -315,11 +305,11 @@ class UserNamespace:
                             'openshift.io/requester': user.name,
                         },
                         labels = {
-                            f"{operator_domain}/user-uid": user.uid
+                            f"{UserNamespaceOperator.operator_domain}/user-uid": user.uid
                         },
                         owner_references = [
                             kubernetes_asyncio.client.V1OwnerReference(
-                                api_version = operator_api_version,
+                                api_version = UserNamespaceOperator.operator_api_version,
                                 controller = True,
                                 kind = 'UserNamespace',
                                 name = self.name,
@@ -332,7 +322,7 @@ class UserNamespace:
             )
             # Create admin role binding for operator to ensure management can
             # continue if cluster-admin privileges are ever removed.
-            await rbac_authorization_v1_api.create_namespaced_role_binding(
+            await UserNamespaceOperator.rbac_authorization_v1_api.create_namespaced_role_binding(
                 self.name,
                 kubernetes_asyncio.client.V1RoleBinding(
                     metadata = kubernetes_asyncio.client.V1ObjectMeta(
@@ -345,10 +335,10 @@ class UserNamespace:
 
                     ),
                     subjects = [
-                        kubernetes_asyncio.client.V1Subject(
+                        kubernetes_asyncio.client.RbacV1Subject(
                             kind = 'ServiceAccount',
-                            name = operator_service_account_name,
-                            namespace = operator_namespace,
+                            name = UserNamespaceOperator.operator_service_account_name,
+                            namespace = UserNamespaceOperator.operator_namespace,
                         )
                     ],
                 )
@@ -357,7 +347,7 @@ class UserNamespace:
         else:
             # Create using a project request so that the operator will be made an
             # administrator.
-            project_request = await custom_objects_api.create_cluster_custom_object(
+            project_request = await UserNamespaceOperator.custom_objects_api.create_cluster_custom_object(
                 group = 'project.openshift.io',
                 plural = 'projectrequests',
                 version = 'v1',
@@ -374,22 +364,22 @@ class UserNamespace:
 
             while True:
                 try:
-                    namespace = await core_v1_api.read_namespace(self.name)
+                    namespace = await UserNamespaceOperator.core_v1_api.read_namespace(self.name)
                     logger.info(f"Namespace {self.name} created")
                     namespace.metadata.annotations['openshift.io/requester'] = user.name
                     namespace.metadata.labels = {
-                        operator_domain + '/user-uid': user.uid
+                        UserNamespaceOperator.operator_domain + '/user-uid': user.uid
                     }
                     namespace.metadata.owner_references = [
                         kubernetes_asyncio.client.V1OwnerReference(
-                            api_version = operator_api_version,
+                            api_version = UserNamespaceOperator.operator_api_version,
                             controller = True,
                             kind = 'UserNamespace',
                             name = self.name,
                             uid = self.uid,
                         )
                     ]
-                    await core_v1_api.replace_namespace(namespace.metadata.name, namespace)
+                    await UserNamespaceOperator.core_v1_api.replace_namespace(namespace.metadata.name, namespace)
                     break
                 except kubernetes_asyncio.client.exceptions.ApiException as e:
                     if e.status != 404 and e.status != 409:
@@ -397,11 +387,11 @@ class UserNamespace:
 
     async def delete(self, logger):
         try:
-            await custom_objects_api.delete_cluster_custom_object(
-                group = operator_domain,
+            await UserNamespaceOperator.custom_objects_api.delete_cluster_custom_object(
+                group = UserNamespaceOperator.operator_domain,
                 name = self.name,
                 plural = 'usernamespaces',
-                version = operator_version,
+                version = UserNamespaceOperator.operator_version,
             )
         except kubernetes_asyncio.client.exceptions.ApiException as e:
             if e.status != 404:
@@ -409,7 +399,7 @@ class UserNamespace:
 
     async def get_config(self):
         if self.config_name:
-            return await user_namespace_config_module.UserNamespaceConfig.get(self.config_name)
+            return await usernamespaceconfig.UserNamespaceConfig.get(self.config_name)
         else:
             return None
 
@@ -438,21 +428,21 @@ class UserNamespace:
         relpace_namespaced = 'replace_namespaced_' + inflection.underscore(kind)
         replace_cluster = 'replace_' + inflection.underscore(kind)
         try:
-            if hasattr(core_v1_api, create_namespaced):
-                method = getattr(core_v1_api, create_namespaced)
+            if hasattr(UserNamespaceOperator.core_v1_api, create_namespaced):
+                method = getattr(UserNamespaceOperator.core_v1_api, create_namespaced)
                 return await method(self.name, definition)
             else:
-                method = getattr(core_v1_api, create_cluster)
+                method = getattr(UserNamespaceOperator.core_v1_api, create_cluster)
                 return await method(definition)
         except kubernetes_asyncio.client.exceptions.ApiException as e:
             if e.status != 409:
                 raise
 
-        if hasattr(core_v1_api, replace_namespaced):
-            method = getattr(core_v1_api, replace_namespaced)
+        if hasattr(UserNamespaceOperator.core_v1_api, replace_namespaced):
+            method = getattr(UserNamespaceOperator.core_v1_api, replace_namespaced)
             return await method(self.name, resource_name, definition)
         else:
-            method = getattr(core_v1_api, replace_cluster)
+            method = getattr(UserNamespaceOperator.core_v1_api, replace_cluster)
             return await method(resource_name, definition)
 
     async def manage_custom_resource(self, definition):
@@ -475,11 +465,11 @@ class UserNamespace:
 
         try:
             if api_resource.namespaced:
-                return await custom_objects_api.create_namespaced_custom_object(
+                return await UserNamespaceOperator.custom_objects_api.create_namespaced_custom_object(
                     api_group.name, api_group.version, self.name, api_resource.plural, definition
                 )
             else:
-                return await custom_objects_api.create_cluster_custom_object(
+                return await UserNamespaceOperator.custom_objects_api.create_cluster_custom_object(
                     api_group.name, api_group.version, api_resource.plural, definition
                 )
         except kubernetes_asyncio.client.exceptions.ApiException as e:
@@ -487,17 +477,17 @@ class UserNamespace:
                 raise
 
         if api_resource.namespaced:
-            return await custom_objects_api.replace_namespaced_custom_object(
+            return await UserNamespaceOperator.custom_objects_api.replace_namespaced_custom_object(
                 api_group.name, api_group.version, self.name, api_resource.plural, resource_name, definition
             )
         else:
-            return await custom_objects_api.replace_cluster_custom_object(
+            return await UserNamespaceOperator.custom_objects_api.replace_cluster_custom_object(
                 api_group.name, api_group.version, api_resource.plural, resource_name, definition
             )
 
     async def manage_namespace(self, logger, user):
         try:
-            namespace = await core_v1_api.read_namespace(self.name)
+            namespace = await UserNamespaceOperator.core_v1_api.read_namespace(self.name)
             await self.check_update_namespace(logger=logger, namespace=namespace, user=user)
         except kubernetes_asyncio.client.exceptions.ApiException as e:
             if e.status == 404:
@@ -537,11 +527,11 @@ class UserNamespace:
             if reference not in resource_references:
                 await self.remove_resource(logger=logger, resource_reference=reference)
 
-        definition = await custom_objects_api.patch_cluster_custom_object_status(
-            group = operator_domain,
+        definition = await UserNamespaceOperator.custom_objects_api.patch_cluster_custom_object_status(
+            group = UserNamespaceOperator.operator_domain,
             name = self.name,
             plural = 'usernamespaces',
-            version = operator_version,
+            version = UserNamespaceOperator.operator_version,
             _content_type = 'application/merge-patch+json',
             body = {
                 "status": {
@@ -586,7 +576,7 @@ class UserNamespace:
 
 
     async def manage_template_resources(self, logger, template):
-        template_resource = await custom_objects_api.get_namespaced_custom_object(
+        template_resource = await UserNamespaceOperator.custom_objects_api.get_namespaced_custom_object(
             'template.openshift.io', 'v1', template.namespace, 'templates', template.name
         )
 
@@ -596,7 +586,7 @@ class UserNamespace:
             elif parameter['name'] == 'PROJECT_ADMIN_USER':
                 parameter['value'] = self.user_name
 
-        processed_template = await custom_objects_api.create_namespaced_custom_object(
+        processed_template = await UserNamespaceOperator.custom_objects_api.create_namespaced_custom_object(
             'template.openshift.io', 'v1', template.namespace, 'processedtemplates', template_resource
         )
 
@@ -640,11 +630,11 @@ class UserNamespace:
         resource_namespace = resource_reference.get('namespace', None)
         if resource_namespace:
             logger.info(f"Removing {kind} {resource_name} from {resource_namespace}")
-            method = getattr(core_v1_api, f"delete_namespaced_{inflection.underscore(kind)}")
+            method = getattr(UserNamespaceOperator.core_v1_api, f"delete_namespaced_{inflection.underscore(kind)}")
             return await method(resource_name, resource_namespace)
         else:
             logger.info(f"Removing {kind} {resource_name}")
-            method = getattr(core_v1_api, f"delete_{inflection.underscore(kind)}")
+            method = getattr(UserNamespaceOperator.core_v1_api, f"delete_{inflection.underscore(kind)}")
             return await method(resource_name)
 
     async def remove_custom_resource(self, logger, resource_reference):
@@ -668,11 +658,11 @@ class UserNamespace:
 
         if api_resource.namespaced:
             logger.info(f"Removing {api_group_version} {kind} {resource_name} from {resource_namespace}")
-            return await custom_objects_api.delete_namespaced_custom_object(
+            return await UserNamespaceOperator.custom_objects_api.delete_namespaced_custom_object(
                 api_group.name, api_group.version, resource_namespace or self.name, api_resource.plural, resource_name
             )
         else:
             logger.info(f"Removing {api_group_version} {kind} {resource_name}")
-            return await custom_objects_api.delete_cluster_custom_object(
+            return await UserNamespaceOperator.custom_objects_api.delete_cluster_custom_object(
                 api_group.name, api_group.version, api_resource.plural, resource_name
             )

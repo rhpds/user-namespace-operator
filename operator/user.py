@@ -2,14 +2,10 @@ import asyncio
 import kubernetes_asyncio
 import re
 
-from config import (
-    custom_objects_api,
-    operator_domain,
-    operator_version,
-)
+from usernamespaceoperator import UserNamespaceOperator
 
-import user_namespace as user_namespace_module
-import user_namespace_config as user_namespace_config_module
+import usernamespace
+import usernamespaceconfig
 
 class User:
     instances = {}
@@ -21,7 +17,7 @@ class User:
             user = User.instances.get(name)
             if user:
                 return user
-            definition = await custom_objects_api.get_cluster_custom_object(
+            definition = await UserNamespaceOperator.custom_objects_api.get_cluster_custom_object(
                 group = 'user.openshift.io',
                 name = name,
                 plural = 'users',
@@ -90,21 +86,21 @@ class User:
 
     async def handle_delete(self, logger):
         async with self.lock:
-            user_namespace_list = await custom_objects_api.list_cluster_custom_object(
-                group = operator_domain,
-                label_selector = f"{operator_domain}/user-uid={self.uid}",
+            user_namespace_list = await UserNamespaceOperator.custom_objects_api.list_cluster_custom_object(
+                group = UserNamespaceOperator.operator_domain,
+                label_selector = f"{UserNamespaceOperator.operator_domain}/user-uid={self.uid}",
                 plural = 'usernamespaces',
-                version = operator_version,
+                version = UserNamespaceOperator.operator_version,
             )
             for user_namespace in user_namespace_list.get('items', []):
                 user_namespace_name = user_namespace['metadata']['name']
                 logger.info(f"Propagating deletion of {self} to UserNamespace {user_namespace_name}")
                 try:
-                    await custom_objects_api.delete_cluster_custom_object(
-                        group = operator_domain,
+                    await UserNamespaceOperator.custom_objects_api.delete_cluster_custom_object(
+                        group = UserNamespaceOperator.operator_domain,
                         name = user_namespace_name,
                         plural = 'usernamespaces',
-                        version = operator_version,
+                        version = UserNamespaceOperator.operator_version,
                     )
                 except kubernetes_asyncio.client.exceptions.ApiException as e:
                     if e.status != 404:
@@ -112,9 +108,9 @@ class User:
 
     async def manage(self, logger):
         async with self.lock:
-            for user_namespace in user_namespace_module.UserNamespace.get_user_namespaces_for_user(self):
+            for user_namespace in usernamespace.UserNamespace.get_user_namespaces_for_user(self):
                 await user_namespace.manage(logger=logger, user=self)
-            for user_namespace_config in user_namespace_config_module.UserNamespaceConfig.list():
+            for user_namespace_config in usernamespaceconfig.UserNamespaceConfig.list():
                 await user_namespace_config.check_autocreate_user_namespace_with_lock(logger=logger, user=self)
 
     async def manage_user_namespace(self, logger, user_namespace):
