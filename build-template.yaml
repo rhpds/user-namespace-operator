@@ -40,9 +40,7 @@ objects:
         uri: ${GIT_REPO}
         ref: master
     strategy:
-      type: Source
-      sourceStrategy:
-        from:
-          kind: DockerImage
-          name: ${KOPF_S2I_IMAGE}
+      dockerStrategy:
+        dockerfilePath: Containerfile
+      type: Docker
     triggers: []
