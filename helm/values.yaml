@@ -31,7 +31,7 @@ deploy: true
 replicaCount: 1
 
 image:
-  repository: quay.io/redhat-gpte/user-namespace-operator
+  repository: quay.io/rhpds/user-namespace-operator
   pullPolicy: Always
   tagOverride: ""
 
