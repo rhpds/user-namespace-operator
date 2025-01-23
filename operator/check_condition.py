@@ -1,5 +1,5 @@
 import jinja2
-from distutils.util import strtobool
+from str2bool import str2bool
 
 def error_if_undefined(result):
     if isinstance(result, jinja2.Undefined):
@@ -12,7 +12,7 @@ j2env = jinja2.Environment(
     undefined = jinja2.ChainableUndefined,
 )
 
-j2env.filters['bool'] = lambda x: bool(strtobool(x)) if isinstance(x, str) else bool(x)
+j2env.filters['bool'] = lambda x: bool(str2bool(x)) if isinstance(x, str) else bool(x)
 
 def check_condition(condition, variables):
     j2template = j2env.from_string("{{(" + condition + ")|bool}}")
