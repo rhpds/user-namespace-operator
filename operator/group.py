@@ -40,7 +40,7 @@ class Group:
 
     def __init__(self, definition):
         self.prev_users = set()
-        self.users = set(definition.get('users', []))
+        self.users = set(definition.get('users') or [])
         self.definition = definition
 
     def __str__(self):
