@@ -16,4 +16,4 @@ j2env.filters['bool'] = lambda x: bool(str2bool(x)) if isinstance(x, str) else b
 
 def check_condition(condition, variables):
     j2template = j2env.from_string("{{(" + condition + ")|bool}}")
-    return bool(strtobool(j2template.render(variables)))
+    return bool(str2bool(j2template.render(variables)))
