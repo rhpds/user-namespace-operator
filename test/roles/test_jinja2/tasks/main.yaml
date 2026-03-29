@@ -1,0 +1,8 @@
+---
+- name: Run tests
+  include_tasks:
+    file: test.yaml
+- name: Cleanup after running tests
+  include_tasks:
+    file: cleanup.yaml
+...

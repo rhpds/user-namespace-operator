@@ -49,15 +49,21 @@ spec:
                 properties:
                   description:
                     description: >-
-                      Description template for user namespace.
-                      Can reference user name with python format string.
-                      Default: "User namespace for {user_name}.".
+                      Description template for auto-created UserNamespace object.
+                      Format may be a python format string or a Jinja2 template.
+                      The presence of `{{` or `{%` in the string is used to detect the format.
+
+                      Template can reference `user`, 'user_name', and `group_names`.
                     type: string
                   displayName:
                     description: >-
-                      Display name template for user namespace.
-                      Can reference user name with python format string.
-                      Default: "User {user_name}".
+                      Display name template for auto-created UserNamespace object.
+                      Format may be a python format string or a Jinja2 template.
+                      The presence of `{{` or `{%` in the string is used to detect the format.
+
+                      Template can reference `user`, 'user_name', and `group_names`.
+
+                      Default: "User namespace for {user_name}.".
                     type: string
                   enable:
                     description: >-
@@ -71,7 +77,31 @@ spec:
                   when:
                     description: >-
                       Condition to check to determine if autocreate should occur.
+                      Template is evaluated using Jinja2 syntax similar to Ansible.
+                      Condition can reference `user` and `group_names`.
                     type: string
+              description:
+                description: >-
+                  Value to set in the namespace `openshift.io/description` annotation.
+                  If set then this overrides the UserNamespace description value.
+
+                  Display name template for auto-created UserNamespace object.
+                  Format may be a python format string or a Jinja2 template.
+                  The presence of `{{` or `{%` in the string is used to detect the format.
+
+                  Template can reference `user`, 'user_name', and `group_names`.
+                type: string
+              displayName:
+                description: >-
+                  Value to set in the namespace `openshift.io/display-name` annotation.
+                  If set then this overrides the UserNamespace displayName value.
+
+                  Display name template for auto-created UserNamespace object.
+                  Format may be a python format string or a Jinja2 template.
+                  The presence of `{{` or `{%` in the string is used to detect the format.
+
+                  Template can reference `user`, 'user_name', and `group_names`.
+                type: string
               managementIntervalSeconds:
                 description: >-
                   Interval between namespace and resource management operations.
@@ -117,6 +147,16 @@ spec:
                       description: >-
                         Optional template namespace if template is not in the operator namespace.
                       type: string
+                    parameterValues:
+                      description: >-
+                        Dictionary of parameter values to apply to template.
+
+                        Parameter values are handled as python format strings or Jinja2 templates.
+                        The presence of `{{` or `{%` in the string is used to detect the format.
+
+                        Template can reference `user`, 'user_name', and `group_names`.
+                      type: object
+                      x-kubernetes-preserve-unknown-fields: true
                     type:
                       type: string
                       description: >-

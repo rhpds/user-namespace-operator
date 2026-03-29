@@ -1,67 +1,69 @@
+from __future__ import annotations
+from collections.abc import Mapping
+from typing import Any, List
+
 import asyncio
 import kubernetes_asyncio
 
 from math import floor, log
 
-from check_condition import check_condition
+from templating import check_condition, process_template
 from usernamespaceoperator import UserNamespaceOperator
 
-import usernamespace
 from group import Group
-import user as user_module
+from user import User
 
 class UserNamespaceRoleBinding:
-    def __init__(self, spec):
+    def __init__(self, spec: Mapping[str, Any]) -> None:
         self.spec = spec
 
     @property
-    def role_name(self):
+    def role_name(self) -> str:
         return self.spec['roleName']
 
     @property
-    def when(self):
+    def when(self) -> str|None:
         return self.spec.get('when')
 
-    def check_condition(self, user):
-        if not self.when:
+    def check_condition(self, user: User, groups: List[Group]) -> bool:
+        if self.when is None:
             return True
 
-        groups = Group.get_groups_with_user(user.name)
         group_names = [group.name for group in groups]
 
         return check_condition(
             self.when,
-            dict(
-                groups = groups,
-                group_names = group_names,
-                user = user,
-            )
+            {
+                "groups": groups,
+                "group_names": group_names,
+                "user": user,
+            }
         )
 
 class UserNamespaceTemplate:
-    def __init__(self, spec):
+    def __init__(self, spec: Mapping[str, Any]) -> None:
         self.spec = spec
 
     @property
-    def name(self):
+    def name(self) -> str:
         return self.spec['name']
 
     @property
-    def namespace(self):
+    def namespace(self) -> str:
         return self.spec.get('namespace', UserNamespaceOperator.operator_namespace)
 
     @property
-    def parameters(self):
-        return self.spec.get('parameters', [])
+    def parameter_values(self) -> Mapping[str, Any]:
+        return self.spec.get('parameterValues', {})
 
 class UserNamespaceConfig:
     instances = {}
     lock = asyncio.Lock()
 
-    @staticmethod
-    async def get(name):
-        async with UserNamespaceConfig.lock:
-            user_namespace_config = UserNamespaceConfig.instances.get(name)
+    @classmethod
+    async def get(cls, name: str) -> UserNamespaceConfig:
+        async with cls.lock:
+            user_namespace_config = cls.instances.get(name)
             if user_namespace_config:
                 return user_namespace_config
             definition = await UserNamespaceOperator.custom_objects_api.get_cluster_custom_object(
@@ -70,87 +72,111 @@ class UserNamespaceConfig:
                 plural = 'usernamespaceconfigs',
                 version = UserNamespaceOperator.operator_version,
             )
-            return UserNamespaceConfig.__register(definition=definition)
+            return cls.__register_definition(definition=definition)
 
-    @staticmethod
-    def list():
-        return list(UserNamespaceConfig.instances.values())
+    @classmethod
+    def list(cls) -> List[UserNamespaceConfig]:
+        return list(cls.instances.values())
 
-    @staticmethod
-    async def preload():
+    @classmethod
+    async def preload(cls) -> None:
         user_namespace_config_list = await UserNamespaceOperator.custom_objects_api.list_cluster_custom_object(
             group = UserNamespaceOperator.operator_domain,
             plural = 'usernamespaceconfigs',
             version = UserNamespaceOperator.operator_version,
         )
         for definition in user_namespace_config_list.get('items', []):
-            await UserNamespaceConfig.register_definition(definition)
+            await cls.register_definition(definition)
 
-    @staticmethod
-    async def register(name, spec, status, uid):
-        async with UserNamespaceConfig.lock:
-            return UserNamespaceConfig.__register(name=name, spec=spec, status=status, uid=uid)
+    @classmethod
+    async def register(cls,
+        name: str,
+        spec: Mapping[str, Any],
+        status: Mapping[str, Any],
+        uid: str,
+    ) -> UserNamespaceConfig:
+        async with cls.lock:
+            return cls.__register(name=name, spec=spec, status=status, uid=uid)
 
-    @staticmethod
-    def __register(name, spec, status, uid):
-        instance = UserNamespaceConfig.instances.get(name)
+    @classmethod
+    def __register(cls,
+        name: str,
+        spec: Mapping[str, Any],
+        status: Mapping[str, Any],
+        uid: str,
+    ) -> UserNamespaceConfig:
+        instance = cls.instances.get(name)
         if instance:
             instance.refresh(name=name, spec=spec, status=status, uid=uid)
         else:
-            instance = UserNamespaceConfig(name=name, spec=spec, status=status, uid=uid)
-            UserNamespaceConfig.instances[name] = instance
+            instance = cls(name=name, spec=spec, status=status, uid=uid)
+            cls.instances[name] = instance
         return instance
 
-    @staticmethod
-    def __register_definition(definition):
-        return UserNamespaceConfig.__register(
+    @classmethod
+    async def register_definition(cls, definition: Mapping[str, Any]) -> UserNamespaceConfig:
+        async with cls.lock:
+            return cls.__register_definition(definition=definition)
+
+    @classmethod
+    def __register_definition(cls, definition: Mapping[str, Any]) -> UserNamespaceConfig:
+        return cls.__register(
             name = definition['metadata']['name'],
             spec = definition['spec'],
             status = definition.get('status'),
             uid = definition['metadata']['uid'],
         )
 
-    @staticmethod
-    async def register_definition(definition):
-        async with UserNamespaceConfig.lock:
-            UserNamespaceConfig.__register_definition(definition=definition)
+    @classmethod
+    async def unregister_config(cls, name:str) -> UserNamespaceConfig|None:
+        async with cls.lock:
+            return cls.instances.pop(name, None)
 
-    @staticmethod
-    async def unregister_config(name):
-        async with UserNamespaceConfig.lock:
-            return UserNamespaceConfig.instances.pop(name, None)
-
-    def __init__(self, name, spec, status, uid, **_):
+    def __init__(self,
+        name: str,
+        spec: Mapping[str, Any],
+        status: Mapping[str, Any],
+        uid: str,
+        **_,
+    ) -> None:
         self.name = name
         self.spec = spec
         self.status = status or {}
         self.uid = uid
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"UserNamespaceConfig {self.name}"
 
     @property
-    def autocreate_description(self):
-        return self.spec.get('autocreate', {}).get('description', 'User namespace for {user_name}.')
+    def autocreate_description(self) -> str|None:
+        return self.spec.get('autocreate', {}).get('description')
 
     @property
-    def autocreate_display_name(self):
-        return self.spec.get('autocreate', {}).get('displayName', 'User {user_name}')
+    def autocreate_display_name(self) -> str|None:
+        return self.spec.get('autocreate', {}).get('displayName')
 
     @property
-    def autocreate_enable(self):
+    def autocreate_enable(self) -> bool:
         return self.spec.get('autocreate', {}).get('enable', False)
 
     @property
-    def autocreate_prefix(self):
+    def autocreate_prefix(self) -> str:
         return self.spec.get('autocreate', {}).get('prefix', 'user-')
 
     @property
-    def autocreate_when(self):
+    def autocreate_when(self) -> str|None:
         return self.spec.get('autocreate', {}).get('when')
 
     @property
-    def reference(self):
+    def description(self) -> str|None:
+        return self.spec.get('description')
+
+    @property
+    def display_name(self) -> str|None:
+        return self.spec.get('displayName')
+
+    @property
+    def reference(self) -> Mapping[str, str]:
         return dict(
             apiVersion = UserNamespaceOperator.operator_api_version,
             kind = 'UserNamespaceConfig',
@@ -159,22 +185,26 @@ class UserNamespaceConfig:
         )
 
     @property
-    def management_interval_seconds(self):
+    def management_interval_seconds(self) -> int:
         return self.spec.get('managementIntervalSeconds', 600)
 
     @property
-    def role_bindings(self):
+    def role_bindings(self) -> List[UserNamespaceRoleBinding]:
         return [
             UserNamespaceRoleBinding(r) for r in self.spec.get('roleBindings', [])
         ]
 
     @property
-    def templates(self):
+    def templates(self) -> List[UserNamespaceRoleTemplate]:
         return [
             UserNamespaceTemplate(t) for t in self.spec.get('templates', [])
         ]
 
-    async def autocreate_user_namespace(self, logger, user):
+    async def autocreate_user_namespace(self,
+        logger: loggers.ObjectLogger,
+        user: User,
+        groups: List[Group],
+    ) -> None:
         """
         Create UserNamespace for user
 
@@ -185,24 +215,47 @@ class UserNamespaceConfig:
         Kubernetes generate name is not used so that autocreated user namespaces
         will be obviously different from other UserNamespace resources.
         """
+        from usernamespace import UserNamespace
+
         user_namespace_basename = self.autocreate_prefix + user.sanitized_name
         # Name truncated at k8s namespace length limit
         user_namespace_name = user_namespace_basename[:63]
+
+        variables = {
+            "groups": groups,
+            "group_names": [group.name for group in groups],
+            "user": user,
+            "user_name": user.name,
+        }
+
+        description = self.autocreate_description
+        if description is not None:
+            description = process_template(description, variables)
+
+        display_name = self.autocreate_display_name
+        if display_name is not None:
+            display_name = process_template(display_name, variables)
+
         i = 0
         while True:
-            user_namespace = await usernamespace.UserNamespace.try_create(
+            user_namespace = await UserNamespace.try_create(
+                description = description,
+                display_name = display_name,
                 logger = logger,
                 name = user_namespace_name,
                 user = user,
                 user_namespace_config = self,
             )
             if user_namespace:
-                return user_namespace
+                return
             i += 1
             # Name truncated at k8s namespace length limit with numeric extension
             user_namespace_name = f"{user_namespace_basename[:61 - floor(log(i, 10))]}-{i}"
 
-    async def check_autocreate_user_namespace(self, logger, user):
+    async def check_autocreate_user_namespace(self,
+        logger: loggers.ObjectLogger,
+        user: User,
+    ) -> None:
         """
         Create UserNamespace object for user if autocreate is enabled and the
         user does not yet have a namespace created from this config.
@@ -210,30 +263,39 @@ class UserNamespaceConfig:
         async with user.lock:
             await self.check_autocreate_user_namespace_with_lock(logger=logger, user=user)
 
-    async def check_autocreate_user_namespace_with_lock(self, logger, user):
+    async def check_autocreate_user_namespace_with_lock(self,
+        logger: loggers.ObjectLogger,
+        user: User,
+    ) -> None:
+        from usernamespace import UserNamespace
+
         if not self.autocreate_enable:
-            return False
+            return
+
+        groups = Group.get_groups_with_user(user.name)
+
         if self.autocreate_when:
-            groups = Group.get_groups_with_user(user.name)
-            group_names = [group.name for group in groups]
             if not check_condition(
                 self.autocreate_when,
-                dict(
-                    groups = groups,
-                    group_names = group_names,
-                    user = user,
-                )
+                {
+                    "groups": groups,
+                    "group_names": [group.name for group in groups],
+                    "user": user,
+                    "user_name": user.name,
+                }
             ):
-                return False
+                return
 
-        user_namespaces = usernamespace.UserNamespace.get_user_namespaces_for_config_and_user(
+        user_namespaces = UserNamespace.get_user_namespaces_for_config_and_user(
             user = user,
             user_namespace_config = self,
         )
         if not user_namespaces:
-            await self.autocreate_user_namespace(logger=logger, user=user)
+            await self.autocreate_user_namespace(logger=logger, user=user, groups=groups)
 
-    async def check_autocreate_user_namespaces(self, logger):
+    async def check_autocreate_user_namespaces(self,
+        logger: loggers.ObjectLogger,
+    ):
         """
         Create UserNamespace for each user in the cluster if autocreate is enabled.
         """
@@ -251,7 +313,7 @@ class UserNamespaceConfig:
                     limit = 50,
                 )
                 for user_definition in user_list.get('items', []):
-                    user = await user_module.User.register(definition=user_definition)
+                    user = await User.register(definition=user_definition)
                     if last_processed_user_name and last_processed_user_name >= user.name:
                         continue
                     else:
@@ -268,14 +330,22 @@ class UserNamespaceConfig:
                 else:
                     raise
 
-    async def manage_user_namespaces(self, logger):
-        for user_namespace in usernamespace.UserNamespace.get_user_namespaces_for_config(self):
+    async def manage_user_namespaces(self,
+        logger: loggers.ObjectLogger,
+    ):
+        from usernamespace import UserNamespace
+        for user_namespace in UserNamespace.get_user_namespaces_for_config(self):
             await user_namespace.get_user_and_manage(logger=logger)
 
-    def refresh(self, spec, status, uid, **_):
+    def refresh(self,
+        spec: Mapping[str, Any],
+        status: Mapping[str, Any],
+        uid: str,
+        **_,
+    ) -> None:
         self.spec = spec
         self.status = status or {}
         self.uid = uid
 
-    def unregister(self):
+    def unregister(self) -> UserNamespaceConfig|None:
         return UserNamespaceConfig.instances.pop(self.name, None)

@@ -50,12 +50,15 @@
       parameters:
       - name: PROJECT_NAME
       - name: PROJECT_ADMIN_USER
+      - name: COMMENT
       objects:
       - apiVersion: rbac.authorization.k8s.io/v1
         kind: RoleBinding
         metadata:
           name: admin:${PROJECT_ADMIN_USER}
           namespace: ${PROJECT_NAME}
+          annotations:
+            comment: ${COMMENT}
         roleRef:
           apiGroup: rbac.authorization.k8s.io
           kind: ClusterRole
@@ -81,6 +84,9 @@
           when: "'test-templates' in group_names"
         templates:
         - name: test-admin
+          parameterValues:
+            COMMENT: >-
+              {% raw %}Testing admin {{ user.name }}{% endraw %}
 
 - name: Verify test-templates-test-alice namespace
   kubernetes.core.k8s_info:
@@ -112,7 +118,8 @@
     r_verify_rolebinding.resources[0].roleRef.name != 'admin' or
     r_verify_rolebinding.resources[0].subjects | length != 1 or
     r_verify_rolebinding.resources[0].subjects[0].kind != 'User' or
-    r_verify_rolebinding.resources[0].subjects[0].name != 'test-alice'
+    r_verify_rolebinding.resources[0].subjects[0].name != 'test-alice' or
+    r_verify_rolebinding.resources[0].metadata.annotations.comment != 'Testing admin test-alice'
   until: r_verify_rolebinding is success
   retries: 30
   delay: 2
@@ -220,7 +227,8 @@
     r_verify_rolebinding.resources[0].roleRef.name != 'admin' or
     r_verify_rolebinding.resources[0].subjects | length != 1 or
     r_verify_rolebinding.resources[0].subjects[0].kind != 'User' or
-    r_verify_rolebinding.resources[0].subjects[0].name != 'test-bob'
+    r_verify_rolebinding.resources[0].subjects[0].name != 'test-bob' or
+    r_verify_rolebinding.resources[0].metadata.annotations.comment != 'Testing admin test-bob'
   until: r_verify_rolebinding is success
   retries: 30
   delay: 2
@@ -262,12 +270,15 @@
       parameters:
       - name: PROJECT_NAME
       - name: PROJECT_ADMIN_USER
+      - name: COMMENT
       objects:
       - apiVersion: rbac.authorization.k8s.io/v1
         kind: RoleBinding
         metadata:
           name: edit:${PROJECT_ADMIN_USER}
           namespace: ${PROJECT_NAME}
+          annotations:
+            comment: ${COMMENT}
         roleRef:
           apiGroup: rbac.authorization.k8s.io
           kind: ClusterRole
@@ -293,6 +304,9 @@
           when: "'test-templates' in group_names"
         templates:
         - name: test-edit
+          parameterValues:
+            COMMENT: >-
+              {% raw %}Testing edit {{ user.name }}{% endraw %}
 
 - name: Verify test-templates-test-alice edit:test-alice rolebinding
   kubernetes.core.k8s_info:
@@ -308,7 +322,8 @@
     r_verify_rolebinding.resources[0].roleRef.name != 'edit' or
     r_verify_rolebinding.resources[0].subjects | length != 1 or
     r_verify_rolebinding.resources[0].subjects[0].kind != 'User' or
-    r_verify_rolebinding.resources[0].subjects[0].name != 'test-alice'
+    r_verify_rolebinding.resources[0].subjects[0].name != 'test-alice' or
+    r_verify_rolebinding.resources[0].metadata.annotations.comment != 'Testing edit test-alice'
   until: r_verify_rolebinding is success
   retries: 30
   delay: 2

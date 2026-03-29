@@ -1,0 +1,185 @@
+---
+- name: Create user test-alice
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: user.openshift.io/v1
+      kind: User
+      metadata:
+        name: test-alice
+      identities:
+      - user-namespace-operator-test:test-alice
+  register: r_create_user
+
+- name: Set test_alice_uid
+  set_fact:
+    test_alice_uid: "{{ r_create_user.result.metadata.uid }}"
+
+- name: Create Identity user-namespace-operator-test:test-alice
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: user.openshift.io/v1
+      kind: Identity
+      metadata:
+        name: user-namespace-operator-test:test-alice
+      extra:
+        email: test-alice@example.com
+      providerName: user-namespace-operator-test
+      providerUserName: test-alice
+      user:
+        name: test-alice
+        uid: "{{ test_alice_uid }}"
+
+- name: Create group test-jinja2
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: user.openshift.io/v1
+      kind: Group
+      metadata:
+        name: test-jinja2
+      users:
+      - test-alice
+
+- name: Create group test-jinja2-disabled
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: user.openshift.io/v1
+      kind: Group
+      metadata:
+        name: test-jinja2-disabled
+      users: []
+
+- name: Create test-jinja2 UserNamespaceConfig
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: usernamespace.gpte.redhat.com/v1
+      kind: UserNamespaceConfig
+      metadata:
+        name: test-jinja2
+      spec:
+        autocreate:
+          enable: true
+          prefix: test-jinja2-
+          when: "'test-jinja2' in group_names"
+        description: >-
+          {%- raw -%}
+          {%- if 'test-jinja2-disabled' in group_names -%}
+          User namespace access disabled for {{user.name}}.
+          {%- else -%}
+          This namespace was created to test jinja2 for {{user.name}}.
+          {%- endif -%}
+          {%- endraw -%}
+        displayName: >-
+          {%- raw -%}
+          Test jinja2 namespace for {{user.name}}
+          {%- if 'test-jinja2-disabled' in group_names %} (disabled){% endif %}
+          {%- endraw -%}
+        roleBindings:
+        - roleName: admin
+          when: "'test-jinja2-disabled' not in group_names"
+
+- name: Verify test-jinja2-test-alice namespace
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Namespace
+    name: test-jinja2-test-alice
+  register: r_verify_namespace
+  failed_when: >-
+    r_verify_namespace.resources | length != 1 or
+    r_verify_namespace.resources[0].metadata.name != 'test-jinja2-test-alice' or
+    r_verify_namespace.resources[0].metadata.annotations['openshift.io/description'] != 'This namespace was created to test jinja2 for test-alice.' or
+    r_verify_namespace.resources[0].metadata.annotations['openshift.io/display-name'] != 'Test jinja2 namespace for test-alice' or
+    r_verify_namespace.resources[0].metadata.labels['usernamespace.gpte.redhat.com/user-uid'] != test_alice_uid
+  until: r_verify_namespace is success
+  retries: 30
+  delay: 2
+
+- name: Verify test-role-bindings-test-alice admin:test-alice rolebinding
+  kubernetes.core.k8s_info:
+    api_version: rbac.authorization.k8s.io/v1
+    kind: RoleBinding
+    name: admin:test-alice
+    namespace: test-jinja2-test-alice
+  register: r_verify_rolebinding
+  failed_when: >-
+    r_verify_rolebinding.resources | length != 1 or
+    r_verify_rolebinding.resources[0].roleRef.apiGroup != 'rbac.authorization.k8s.io' or
+    r_verify_rolebinding.resources[0].roleRef.kind != 'ClusterRole' or
+    r_verify_rolebinding.resources[0].roleRef.name != 'admin' or
+    r_verify_rolebinding.resources[0].subjects | length != 1 or
+    r_verify_rolebinding.resources[0].subjects[0].kind != 'User' or
+    r_verify_rolebinding.resources[0].subjects[0].name != 'test-alice'
+  until: r_verify_rolebinding is success
+  retries: 30
+  delay: 2
+
+- name: Update group test-jinja2-disabled to add test-alice
+  kubernetes.core.k8s:
+    api_version: user.openshift.io/v1
+    kind: Group
+    name: test-jinja2-disabled
+    definition:
+      users:
+      - test-alice
+
+- name: Verify test-jinja2-test-alice namespace
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Namespace
+    name: test-jinja2-test-alice
+  register: r_verify_namespace
+  failed_when: >-
+    r_verify_namespace.resources | length != 1 or
+    r_verify_namespace.resources[0].metadata.name != 'test-jinja2-test-alice' or
+    r_verify_namespace.resources[0].metadata.annotations['openshift.io/description'] != 'User namespace access disabled for test-alice.' or
+    r_verify_namespace.resources[0].metadata.annotations['openshift.io/display-name'] != 'Test jinja2 namespace for test-alice (disabled)' or
+    r_verify_namespace.resources[0].metadata.labels['usernamespace.gpte.redhat.com/user-uid'] != test_alice_uid
+  until: r_verify_namespace is success
+  retries: 30
+  delay: 2
+
+- name: Verify test-role-bindings-test-alice admin:test-alice rolebinding removed
+  kubernetes.core.k8s_info:
+    api_version: rbac.authorization.k8s.io/v1
+    kind: RoleBinding
+    name: admin:test-alice
+    namespace: test-jinja2-test-alice
+  register: r_verify_rolebinding
+  failed_when: >-
+    r_verify_rolebinding.resources | length != 0
+  until: r_verify_rolebinding is success
+  retries: 30
+  delay: 2
+
+- name: Delete user test-alice
+  kubernetes.core.k8s:
+    api_version: user.openshift.io/v1
+    kind: User
+    name: test-alice
+    state: absent
+
+- name: Delete Identity user-namespace-operator-test:test-alice
+  kubernetes.core.k8s:
+    api_version: user.openshift.io/v1
+    kind: Identity
+    name: user-namespace-operator-test:test-alice
+    state: absent
+
+- name: Verify test-jinja2-test-alice namespace deleted
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Namespace
+    name: test-jinja2-test-alice
+  register: r_verify_namespace
+  failed_when: >-
+    r_verify_namespace.resources | length != 0
+  until: r_verify_namespace is success
+  retries: 30
+  delay: 2
+
+- name: Remove test-jinja2 UserNamespaceConfig
+  kubernetes.core.k8s:
+    api_version: usernamespace.gpte.redhat.com/v1
+    kind: UserNamespaceConfig
+    name: test-jinja2
+    state: absent
+...

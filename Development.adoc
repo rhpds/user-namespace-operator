@@ -1,79 +1,11 @@
 # Development
 
-Development on this operator can be performed in the `odo` OpenShift developer CLI or building with OpenShift build configs.
-An OpenShift cluster with cluster-admin is required for `odo` development.
-https://developers.redhat.com/products/codeready-containers/overview[CodeReady Containers] is recommended for local development.
-An Ansible test suite is available for functional testing.
+## Local Development
 
-## Development with `odo`
+A `run-local.sh` script is provided that will apply CRD definitions,
+setup the local virtual environment, and run the operator.
 
-Use of `odo` is recommended for fast iterative development.
-`odo` simplifies the build/deploy process and avoids creating unnecessary build artifacts during the development process.
-
-. Install the `odo` developer CLI as described in the OpenShift documentation:
-https://docs.openshift.com/container-platform/latest/cli_reference/developer_cli_odo/installing-odo.html[Installing odo]
-
-. Create resources required for development from helm chart:
-+
------------------------------------------------
-helm template helm/ \
---include-crds \
---set deploy=false \
---set namespace.name=user-namespace-operator \
---set defaultUserNamespaceConfig.create=false \
-| oc apply -f -
------------------------------------------------
-
-. Change project namespace to `user-namespace-operator`:
-+
----------------------------------------
-odo project set user-namespace-operator
----------------------------------------
-
-. Grant privileges for cluster role `user-namespace-operator` to default service account:
-+
--------------------------------------------------------------------------
-oc adm policy add-cluster-role-to-user user-namespace-operator -z default
--------------------------------------------------------------------------
-
-. Setup `odo` from the provided `devfile.yaml`:
-+
----------------------------------
-odo create --devfile devfile.yaml
----------------------------------
-+
-NOTE: The poolboy operator domain is specified in the devfile.
-If you are developing with a different operator domain then you will need to update the `devfile.yaml`.
-
-. Use `odo push` to push code into the odo container:
-+
---------
-odo push
---------
-
-. Run tests:
-+
------------------------------------
-ansible-playbook test/playbook.yaml
------------------------------------
-
-. Cleanup
-+
-Remove `odo` component
-+
-------------------------------------------
-odo delete --force user-namespace-operator
-------------------------------------------
-+
-Delete resources created from helm template:
-+
---------------------------------------------------
-helm template helm/ \
---include-crds \
---set deploy=false \
---set namespace.name=user-namespace-operator-dev \
-| oc delete -f -
---------------------------------------------------
+To run tests just use `run-test.sh` in another terminal.
 
 ## Development OpenShift Build
 
