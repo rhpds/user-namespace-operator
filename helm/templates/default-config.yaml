@@ -12,6 +12,12 @@ spec:
     enable: true
     prefix: {{ .Values.defaultUserNamespaceConfig.autocreate.prefix }}
   {{- end }}
+  {{- with .Values.defaultUserNamespaceConfig.description }}
+  description: {{ . | mustToJson }}
+  {{- end }}
+  {{- with .Values.defaultUserNamespaceConfig.displayName }}
+  displayName: {{ . | mustToJson }}
+  {{- end }}
   roleBindings:
     {{- toYaml .Values.defaultUserNamespaceConfig.roleBindings | nindent 4 }}
 {{- end }}
